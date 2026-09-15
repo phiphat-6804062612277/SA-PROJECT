@@ -1,62 +1,74 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, ShoppingCart } from 'lucide-react';
+import API from '@/lib/api';
 
-export default function ProductDetailPage({ params }) {
+export default function ProductDetailPage() {
   const router = useRouter();
-  
-  // สมมุติข้อมูลสินค้า (พร้อมเชื่อม GET /api/products/:id)
-  const product = {
-    id: params.id,
-    title: 'ชุดโซล่าเซลล์ 15kW | Inverter Huawei | ระบบไฟ 3 เฟส พร้อมติดตั้งครบชุด',
-    description: 'โซล่าเซลล์ 15kW สำหรับไฟ 3 เฟส เหมาะกับบ้านหรือโรงงานที่ใช้ไฟสูง ใช้ Inverter Huawei รุ่น M2 และแผง Tier1 ประหยัดค่าไฟได้เดือนละ 8,000–10,000 บาท',
-    price: 999999,
-    stock: 20,
+  const params = useParams();
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (params.id) {
+      fetchProductDetail();
+    }
+  }, [params.id]);
+
+  const fetchProductDetail = async () => {
+    try {
+      console.log('Fetching Product ID:', params.id); // ดู ID ที่ถูกส่งมา
+      const res = await API.get(`/products/${params.id}`);
+      console.log('Product Data Received:', res.data);
+      setProduct(res.data);
+    } catch (err) {
+      console.error('Failed to fetch product error:', err.response?.data || err.message);
+      setProduct(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddToCart = () => {
-    // เก็บลง Cart หรือยิง API
+    // บันทึกใส่ LocalStorage ชั่วคราว (หรือยิง API Cart)
+    const currentCart = JSON.parse(localStorage.getItem('cart') || '[]');
+    currentCart.push(product);
+    localStorage.setItem('cart', JSON.stringify(currentCart));
+    
     alert('เพิ่มสินค้าลงตะกร้าเรียบร้อย!');
     router.push('/cart');
   };
 
+  if (loading) return <div className="p-10 text-center text-slate-500">กำลังโหลดข้อมูลสินค้า...</div>;
+  if (!product) return <div className="p-10 text-center text-slate-500">ไม่พบสินค้าชิ้นนี้</div>;
+
   return (
     <div className="bg-white min-h-screen pb-32">
-      {/* Top Header */}
       <div className="bg-[#8be0e0] p-4">
         <button onClick={() => router.back()} className="text-slate-700">
           <ArrowLeft size={24} />
         </button>
       </div>
 
-      {/* Main Image */}
-      <div className="bg-slate-300 h-72 relative flex items-center justify-center">
-        <span className="text-slate-500 font-medium text-sm">[ รูปภาพสินค้า ]</span>
-        <span className="absolute bottom-3 right-3 bg-slate-800/60 text-white text-xs px-2.5 py-1 rounded-full">
-          1/11
-        </span>
+      <div className="bg-slate-300 h-72 relative flex items-center justify-center overflow-hidden">
+        {product.images?.[0] ? (
+          <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-slate-500 font-medium text-sm">[ รูปภาพสินค้า ]</span>
+        )}
       </div>
 
-      {/* Thumbnails */}
-      <div className="grid grid-cols-5 gap-2 p-4">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="bg-slate-200 aspect-square rounded-md border border-slate-300"></div>
-        ))}
-      </div>
-
-      {/* Info & Price */}
-      <div className="px-4 space-y-3">
+      <div className="p-4 space-y-3">
         <div className="flex justify-between items-center font-bold text-lg text-slate-900 border-b pb-2">
-          <span>฿ {product.price.toLocaleString()}</span>
-          <span className="text-sm font-normal text-slate-700">Stock : {product.stock}</span>
+          <span>฿ {product.price?.toLocaleString()}</span>
+          <span className="text-sm font-normal text-slate-700">Stock : {product.stock || 0}</span>
         </div>
 
-        <h1 className="font-bold text-slate-800 text-sm leading-snug">{product.title}</h1>
+        <h1 className="font-bold text-slate-800 text-sm leading-snug">{product.name}</h1>
         <p className="text-xs text-slate-600 leading-relaxed border-t pt-2">{product.description}</p>
       </div>
 
-      {/* Sticky Bottom Action Bar */}
       <div className="fixed bottom-14 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t px-4 py-2.5 flex justify-between items-center z-40">
         <button onClick={() => router.back()} className="p-2 text-slate-800 hover:bg-slate-100 rounded-full">
           <ArrowLeft size={20} />
@@ -65,10 +77,13 @@ export default function ProductDetailPage({ params }) {
           <ShoppingCart size={20} />
         </button>
         <button 
-          onClick={() => router.push('/checkout')}
+          onClick={() => {
+            handleAddToCart();
+            router.push('/checkout');
+          }}
           className="bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold px-6 py-2 rounded-full text-sm transition"
         >
-          ฿ {product.price.toLocaleString()}
+          สั่งซื้อทันที
         </button>
       </div>
     </div>
