@@ -1,28 +1,40 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
+import API from '@/lib/api';
 
 export default function ShoppingPage() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  // ข้อมูลจำลองสำหรับรอเชื่อม API /api/products
-  const products = [
-    { id: '1', name: 'ชุดโซล่าเซลล์ 15kW', price: 999999, img: '/solar1.jpg' },
-    { id: '2', name: 'แผง Solar Mono 550W', price: 4200, img: '/solar2.jpg' },
-    { id: '3', name: 'Inverter Huawei 10kW', price: 45000, img: '/solar3.jpg' },
-    { id: '4', name: 'แบตเตอรี่ Lithium 48V', price: 32000, img: '/solar4.jpg' },
-  ];
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      const res = await API.get('/products');
+      setProducts(res.data);
+    } catch (err) {
+      console.error('Failed to fetch products:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="bg-[#e0f7f7] min-h-screen">
-      {/* Top Header */}
       <div className="bg-[#8be0e0] p-4 flex items-center justify-between">
         <button className="text-slate-700 text-2xl font-bold">☰</button>
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Search Bar */}
         <div className="relative">
           <input
             type="text"
@@ -34,20 +46,25 @@ export default function ShoppingPage() {
           <Search className="absolute right-3 top-2.5 text-slate-400 w-4 h-4" />
         </div>
 
-        {/* Product Grid 2 คอลัมน์ */}
-        <div className="grid grid-cols-2 gap-3">
-          {products.map((p) => (
-            <Link key={p.id} href={`/product/${p.id}`}>
-              <div className="bg-[#d5e8e8] rounded-2xl p-2 shadow-sm hover:shadow-md transition">
-                <div className="bg-slate-300 h-32 rounded-xl mb-2 flex items-center justify-center text-xs text-slate-500">
-                  [ รูปสินค้า ]
+        {loading ? (
+          <div className="text-center py-10 text-sm text-slate-500">กำลังโหลดรายการสินค้า...</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {filteredProducts.map((p) => (
+              <Link key={p._id} href={`/product/${p._id}`}>
+                <div className="bg-[#d5e8e8] rounded-2xl p-2 shadow-sm hover:shadow-md transition">
+                  <img 
+                    src={p.images?.[0] || '/solar-placeholder.jpg'} 
+                    alt={p.name}
+                    className="w-full h-32 object-cover rounded-xl mb-2"
+                  />
+                  <h3 className="font-semibold text-xs text-slate-800 truncate">{p.name}</h3>
+                  <p className="text-xs font-bold text-slate-900 mt-1">฿ {p.price?.toLocaleString()}</p>
                 </div>
-                <h3 className="font-semibold text-xs text-slate-800 truncate">{p.name}</h3>
-                <p className="text-xs font-bold text-slate-900 mt-1">฿ {p.price.toLocaleString()}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
