@@ -4,38 +4,56 @@ const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
 const auth = require('../middleware/auth');
 
-// ดูข้อมูล Wallet และยอดเงินของตัวเอง
-router.get('/me', auth, async (req, res) => {
+// ฟังก์ชันดึงข้อมูล Wallet
+const getWallet = async (req, res) => {
   try {
-    const wallet = await Wallet.findOne({ userId: req.user.id });
-    const transactions = await Transaction.find({ walletId: wallet._id }).sort({ createdAt: -1 });
-    res.json({ wallet, transactions });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    let wallet = await Wallet.findOne({ userId: req.user.id });
+    
+    if (!wallet) {
+      wallet = new Wallet({ userId: req.user.id, balance: 0 });
+      await wallet.save();
+    }
 
-// เติมเงินจำลอง (Mock Top-up) สำหรับ Buyer
+    const transactions = await Transaction.find({ walletId: wallet._id }).sort({ createdAt: -1 });
+    
+    // ส่งทั้ง object wallet และ balance แยกออกมาให้ Frontend อ่านง่าย
+    res.json({ wallet, balance: wallet.balance, transactions });
+  } catch (err) {
+    res.status(500).json({ message: 'Server Error', error: err.message });
+  }
+};
+
+// รองรับทั้ง /api/wallet และ /api/wallet/me
+router.get('/me', auth, getWallet);
+router.get('/', auth, getWallet);
+
+// API เติมเงินเข้า Wallet
 router.post('/topup', auth, async (req, res) => {
   try {
-    const { amount } = req.body;
-    if (amount <= 0) return res.status(400).json({ message: 'Amount must be greater than 0' });
+    const amount = Number(req.body.amount);
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'จำนวนเงินต้องมากกว่า 0' });
+    }
 
-    const wallet = await Wallet.findOne({ userId: req.user.id });
+    let wallet = await Wallet.findOne({ userId: req.user.id });
+    if (!wallet) {
+      wallet = new Wallet({ userId: req.user.id, balance: 0 });
+    }
+
     wallet.balance += amount;
     await wallet.save();
 
-    // บันทึกประวัติการเติมเงิน
     const transaction = new Transaction({
       walletId: wallet._id,
       type: 'TOPUP',
-      amount
+      amount,
+      description: 'เติมเงินเข้า Wallet'
     });
     await transaction.save();
 
-    res.json({ message: 'Top-up successful', balance: wallet.balance });
+    res.json({ message: 'เติมเงินสำเร็จ', balance: wallet.balance });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ message: 'Server Error', error: err.message });
   }
 });
 
