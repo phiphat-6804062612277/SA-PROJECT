@@ -1,28 +1,20 @@
-import { Geist, Geist_Mono } from "next/font/google";
-import Navbar from '@/components/Navbar'; //
-import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import './globals.css';
+import BottomNav from '@/components/BottomNav';
 
 export const metadata = {
-  title: 'Solify - Marketplace สำหรับ Solar Cell',
-  description: 'ซื้อขายอุปกรณ์ Solar Cell ระบบตัวกลาง Escrow',
+  title: 'Solify - Solar Cell Marketplace',
+  description: 'ซื้อขายอุปกรณ์ Solar Cell ระบบ Escrow',
 };
 
 export default function RootLayout({ children }) {
   return (
-   <html lang="en">
-      <body className="bg-slate-50 min-h-screen text-slate-800">
-        <Navbar />
-        <main className="max-w-7xl mx-auto p-4">{children}</main>
+    <html lang="th">
+      <body className="bg-slate-200 min-h-screen flex justify-center items-center">
+        {/* Container จำลองหน้าจอมือถือตาม Wireframe */}
+        <div className="w-full max-w-md bg-white min-h-screen relative shadow-2xl flex flex-col font-sans">
+          <main className="flex-1 pb-20">{children}</main>
+          <BottomNav />
+        </div>
       </body>
     </html>
   );
