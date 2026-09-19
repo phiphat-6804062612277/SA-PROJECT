@@ -13,17 +13,33 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
-// Token หมดอายุ/ไม่ถูกต้อง → ล้างเซสชันแล้วพาไปหน้า Login (ยกเว้นตอนกำลังล็อกอินอยู่)
+const isAuthCall = (url = '') =>
+  ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/verify-otp', '/auth/reset-password'].some((p) =>
+    url.startsWith(p)
+  );
+
+// Token หมดอายุ / บัญชีถูกแบน → ล้างเซสชันแล้วพาไปหน้า Login
 API.interceptors.response.use(
   (res) => res,
   (err) => {
-    const isAuthCall = err.config?.url?.startsWith('/auth/login') || err.config?.url?.startsWith('/auth/register');
-    if (typeof window !== 'undefined' && err.response?.status === 401 && !isAuthCall) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      const here = window.location.pathname + window.location.search;
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = `/login?next=${encodeURIComponent(here)}`;
+    // skipAuthRedirect = คำขอเบื้องหลัง (เช่น แจ้งเตือน) ที่ไม่ควรเด้งผู้ใช้ไปหน้า Login เอง
+    if (typeof window !== 'undefined' && !isAuthCall(err.config?.url) && !err.config?.skipAuthRedirect) {
+      const status = err.response?.status;
+      const banned = status === 403 && err.response?.data?.code === 'BANNED';
+      if (status === 401 || banned) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        if (banned) {
+          try {
+            sessionStorage.setItem('authNotice', err.response.data.message);
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!window.location.pathname.startsWith('/login')) {
+          const here = window.location.pathname + window.location.search;
+          window.location.href = `/login?next=${encodeURIComponent(here)}`;
+        }
       }
     }
     return Promise.reject(err);

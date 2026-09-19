@@ -1,9 +1,11 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import API, { errorMessage } from '@/lib/api';
-import { saveSession, safeNext, homeFor } from '@/lib/auth';
+import { saveSession, safeNext, homeFor, takeAuthNotice } from '@/lib/auth';
+import AuthShell, { authLabel, authInput, authButton, OrDivider } from '@/components/AuthShell';
+import PasswordInput from '@/components/PasswordInput';
 import Notice from '@/components/Notice';
 
 function LoginForm() {
@@ -12,12 +14,21 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // ข้อความที่ส่งมาจากหน้าอื่น เช่น "ตั้งรหัสผ่านใหม่เรียบร้อย" / "บัญชีถูกระงับ"
+  useEffect(() => {
+    setNotice(takeAuthNotice());
+  }, []);
+
+  const q = params.get('next') ? `?next=${encodeURIComponent(params.get('next'))}` : '';
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setNotice('');
 
     try {
       const res = await API.post('/auth/login', { email, password });
@@ -31,58 +42,39 @@ function LoginForm() {
   };
 
   return (
-    <div className="bg-[#e0f7f7] min-h-screen flex items-center justify-center p-4">
-      <div className="bg-white p-6 rounded-3xl shadow-sm w-full max-w-md space-y-4">
-        <div className="text-center">
-          <div className="text-4xl">☀️</div>
-          <h1 className="text-xl font-bold text-slate-800 mt-1">เข้าสู่ระบบ Solify</h1>
+    <AuthShell>
+      <h1 className="font-serif font-bold text-2xl text-slate-900 text-center mt-8">LOG IN</h1>
+
+      <form onSubmit={handleLogin} className="mt-8 space-y-4">
+        <Notice type="error">{error}</Notice>
+        <Notice type="info">{notice}</Notice>
+
+        <div>
+          <label htmlFor="email" className={authLabel}>Email</label>
+          <input id="email" type="email" required autoComplete="email" maxLength={100} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter mail" className={authInput} />
         </div>
 
-        <Notice type="error">{error}</Notice>
+        <div>
+          <label htmlFor="password" className={authLabel}>Password</label>
+          <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+        </div>
 
-        <form onSubmit={handleLogin} className="space-y-3 text-xs">
-          <div>
-            <label htmlFor="email" className="font-bold text-slate-700">อีเมล</label>
-            <input
-              id="email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full mt-1 p-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-cyan-500"
-              placeholder="example@gmail.com"
-            />
-          </div>
+        <button type="submit" disabled={loading} className={`${authButton} mt-2`}>
+          {loading ? 'logging in...' : 'log in'}
+        </button>
 
-          <div>
-            <label htmlFor="password" className="font-bold text-slate-700">รหัสผ่าน</label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full mt-1 p-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-cyan-500"
-              placeholder="••••••••"
-            />
-          </div>
+        <div className="text-right">
+          <Link href="/forgot-password" className="text-[11px] text-slate-800 hover:underline">Forget Password?</Link>
+        </div>
+      </form>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold py-3 rounded-full text-sm mt-2 disabled:opacity-50"
-          >
-            {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
-          </button>
-        </form>
+      <OrDivider />
 
-        <p className="text-center text-xs text-slate-500">
-          ยังไม่มีบัญชี? <Link href="/register" className="text-cyan-600 font-bold">สมัครสมาชิก</Link>
-        </p>
+      <div className="flex justify-between text-[11px] text-slate-800">
+        <span>Didn&apos;t have account?</span>
+        <Link href={`/register${q}`} className="text-blue-600 hover:underline">sign up</Link>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 

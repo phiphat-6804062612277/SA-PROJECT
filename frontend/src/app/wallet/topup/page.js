@@ -9,7 +9,7 @@ import Loading from '@/components/Loading';
 function TopUp() {
   const router = useRouter();
   const params = useSearchParams();
-  const { user } = useAuth();
+  const { user } = useAuth({ roles: ['buyer'] });
   if (!user) return <Loading />;
 
   return (

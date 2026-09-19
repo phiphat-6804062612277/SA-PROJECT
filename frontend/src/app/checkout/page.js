@@ -99,7 +99,7 @@ function CheckoutContent() {
           ราคาสินค้า : {baht(totalPrice)} ฿ | ยอดคงเหลือ : {baht(walletBalance)} ฿
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { setPaymentStatus('IDLE'); setErrorMsg(''); }} className="bg-[#8be0e0] text-slate-900 font-bold px-6 py-2.5 rounded-full text-sm">
+          <button onClick={() => { setPaymentStatus('IDLE'); setErrorMsg(''); }} className="bg-[#9bdadd] text-slate-900 font-bold px-6 py-2.5 rounded-full text-sm">
             ลองใหม่อีกครั้ง
           </button>
           <Link href="/cart" className="bg-white text-slate-800 font-bold px-6 py-2.5 rounded-full text-sm">
@@ -114,7 +114,7 @@ function CheckoutContent() {
     return (
       <div className="bg-[#e0f7f7] min-h-screen flex flex-col justify-center items-center p-6 text-center">
         <p className="text-sm text-slate-600 mb-4">{errorMsg || 'ไม่มีสินค้าที่เลือกสำหรับชำระเงิน'}</p>
-        <Link href="/cart" className="bg-[#8be0e0] text-slate-900 font-bold px-6 py-2 rounded-full text-sm">
+        <Link href="/cart" className="bg-[#9bdadd] text-slate-900 font-bold px-6 py-2 rounded-full text-sm">
           กลับไปตะกร้า
         </Link>
       </div>
@@ -142,15 +142,15 @@ function CheckoutContent() {
           <p className="font-bold text-slate-900">รายการสินค้า</p>
           {items.map((i) => (
             <div key={i.productId} className="flex justify-between gap-2 text-slate-700">
-              <span className="flex-1 line-clamp-1">{i.product.name} × {i.quantity}</span>
-              <span className="font-bold">฿ {baht(i.product.price * i.quantity)}</span>
+              <span className="flex-1 line-clamp-1 text-wrap-safe">{i.product.name} × {i.quantity}</span>
+              <span className="font-bold money">฿ {baht(i.product.price * i.quantity)}</span>
             </div>
           ))}
         </div>
 
         <div className="bg-white p-4 rounded-2xl text-center space-y-2 shadow-sm">
           <p className="text-xs text-slate-600">ยอดเงินคงเหลือใน Wallet ของคุณ</p>
-          <p className="text-xl font-black text-slate-900">฿ {baht(walletBalance)}</p>
+          <p className="text-xl font-black text-slate-900 money">฿ {baht(walletBalance)}</p>
           {notEnough && (
             <div className="space-y-2">
               <p className="text-xs font-bold text-red-500">ยอดเงินไม่เพียงพอ ขาดอีก ฿ {baht(totalPrice - walletBalance)}</p>
@@ -163,12 +163,12 @@ function CheckoutContent() {
         {errorMsg && <p className="text-xs font-bold text-red-500 text-center" role="alert">{errorMsg}</p>}
       </div>
 
-      <div className="fixed bottom-14 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t p-4 flex justify-between items-center z-40">
-        <span className="text-xs font-bold text-slate-700">ราคารวม : <span className="text-sm font-black text-slate-900">฿ {baht(totalPrice)}</span></span>
+      <div className="fixed bottom-[68px] left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t p-4 flex justify-between items-center z-40">
+        <span className="text-xs font-bold text-slate-700">ราคารวม : <span className="text-sm font-black text-slate-900 money">฿ {baht(totalPrice)}</span></span>
         <button
           onClick={handleConfirmPay}
           disabled={loading || notEnough}
-          className="bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold px-8 py-2 rounded-full text-sm disabled:opacity-50"
+          className="bg-[#9bdadd] hover:bg-cyan-300 text-slate-900 font-bold px-8 py-2 rounded-full text-sm disabled:opacity-50"
         >
           {loading ? 'กำลังประมวลผล...' : 'ชำระเงิน'}
         </button>

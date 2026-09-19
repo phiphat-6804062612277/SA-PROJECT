@@ -68,7 +68,7 @@ export default function CartPage() {
         <div className="text-6xl mb-4">🛒</div>
         <h2 className="font-bold text-slate-800 text-base mb-1">คุณยังไม่มีสินค้าในรถเข็น</h2>
         <p className="text-xs text-slate-500 mb-6">โปรดเลือกซื้อสินค้าจากหน้าร้านค้า</p>
-        <Link href="/shopping" className="bg-[#8be0e0] text-slate-900 font-bold px-6 py-2 rounded-full text-sm">
+        <Link href="/shopping" className="bg-[#9bdadd] text-slate-900 font-bold px-6 py-2 rounded-full text-sm">
           ไปหน้าซื้อสินค้า
         </Link>
       </div>
@@ -99,8 +99,8 @@ export default function CartPage() {
                 <ProductImage src={p.imageUrl} alt={p.name} className="w-16 h-16 rounded-lg" iconSize={22} />
               </Link>
               <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-xs text-slate-800 line-clamp-2">{p.name}</h3>
-                <p className="text-xs font-black text-slate-900 mt-1">฿ {baht(p.price)}</p>
+                <h3 className="font-bold text-xs text-slate-800 line-clamp-2 text-wrap-safe">{p.name}</h3>
+                <p className="text-xs font-black text-slate-900 mt-1 money">฿ {baht(p.price)}</p>
                 <div className="flex items-center justify-between mt-1">
                   <div className="flex items-center gap-1 bg-white rounded-full">
                     <button aria-label="ลดจำนวน" disabled={item.quantity <= 1} onClick={() => changeQty(item, item.quantity - 1)} className="p-1.5 disabled:opacity-30">
@@ -122,14 +122,14 @@ export default function CartPage() {
         })}
       </div>
 
-      <div className="fixed bottom-14 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t p-4 flex justify-between items-center z-40">
+      <div className="fixed bottom-[68px] left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t p-4 flex justify-between items-center z-40">
         <div className="text-xs font-bold text-slate-700">
-          ราคารวม ({chosen.length} รายการ): <span className="text-sm font-black text-slate-900">฿ {baht(totalPrice)}</span>
+          ราคารวม ({chosen.length} รายการ): <span className="text-sm font-black text-slate-900 money">฿ {baht(totalPrice)}</span>
         </div>
         <button
           disabled={chosen.length === 0}
           onClick={() => router.push(`/checkout?ids=${chosen.map((i) => i.productId).join(',')}`)}
-          className="bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold px-6 py-2 rounded-full text-sm disabled:opacity-40"
+          className="bg-[#9bdadd] hover:bg-cyan-300 text-slate-900 font-bold px-6 py-2 rounded-full text-sm disabled:opacity-40"
         >
           ชำระเงิน
         </button>

@@ -6,6 +6,14 @@ const { credit, debitIfEnough } = require('../utils/wallet');
 
 const router = express.Router();
 
+// Admin ไม่มี Wallet — งานของ Admin คือไกล่เกลี่ยข้อพิพาท (/api/admin/disputes)
+router.use(auth, (req, res, next) => {
+  if (req.user.role === 'admin') {
+    return res.status(403).json({ message: 'บัญชี Admin ไม่มี Wallet (ใช้หน้าจัดการข้อพิพาทแทน)' });
+  }
+  next();
+});
+
 const MAX_TOPUP = 100000; // เพดานต่อครั้ง (ระบบจำลอง)
 
 async function getWallet(req, res) {
@@ -20,11 +28,15 @@ async function getWallet(req, res) {
   res.json({ wallet, balance: wallet.balance, transactions });
 }
 
-router.get('/', auth, getWallet);
-router.get('/me', auth, getWallet);
+router.get('/', getWallet);
+router.get('/me', getWallet);
 
 // เติมเงิน (จำลอง — ไม่ได้ต่อ Payment Gateway จริง)
-router.post('/topup', auth, async (req, res) => {
+router.post('/topup', async (req, res) => {
+  // ผู้ขายเติมเงินไม่ได้ — Wallet ผู้ขายมีเงินเข้าจากการขายเท่านั้น และมีแต่ฟังก์ชันถอน
+  if (req.user.role === 'seller') {
+    return res.status(403).json({ message: 'บัญชีผู้ขายไม่สามารถเติมเงินได้ (ถอนเงินรายได้ได้เท่านั้น)' });
+  }
   const amount = Number(req.body?.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: 'จำนวนเงินต้องมากกว่า 0' });
@@ -37,8 +49,8 @@ router.post('/topup', auth, async (req, res) => {
   res.json({ message: 'เติมเงินสำเร็จ', balance: wallet.balance });
 });
 
-// ถอนเงิน (จำลอง) — ผู้ขายใช้ถอนรายได้ที่ได้รับจากการขาย
-router.post('/withdraw', auth, async (req, res) => {
+// ถอนเงิน (จำลอง) — เฉพาะผู้ขาย ใช้ถอนรายได้ที่ได้รับจากการขาย
+router.post('/withdraw', auth.requireRole('seller'), async (req, res) => {
   const amount = Number(req.body?.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: 'จำนวนเงินต้องมากกว่า 0' });

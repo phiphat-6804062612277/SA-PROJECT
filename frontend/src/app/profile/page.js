@@ -2,13 +2,20 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { User, Phone, MapPin, Edit3, Save, LogOut, ClipboardList, Wallet, Store, ChevronRight } from 'lucide-react';
+import { Phone, MapPin, Edit3, Save, LogOut, ClipboardList, Wallet, Store, ChevronRight, ShieldCheck, Settings, Scale } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { clearSession, updateStoredUser } from '@/lib/auth';
+import { validatePhone } from '@/lib/phone';
+import { LIMITS } from '@/lib/limits';
 import { useAuth } from '@/lib/useAuth';
 import PageHeader from '@/components/PageHeader';
 import Loading from '@/components/Loading';
 import Notice from '@/components/Notice';
+import ReviewList from '@/components/ReviewList';
+import ImageUploader from '@/components/ImageUploader';
+import TrustBadge from '@/components/TrustBadge';
+import { useNotifications } from '@/components/NotificationProvider';
+import { useToast } from '@/components/Toast';
 
 const inputCls =
   'w-full mt-1 p-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none focus:border-cyan-500';
@@ -16,6 +23,9 @@ const inputCls =
 export default function ProfilePage() {
   const router = useRouter();
   const { user: sessionUser } = useAuth();
+  const toast = useToast();
+  const { total: taskTotal, items: taskItems } = useNotifications();
+  const [received, setReceived] = useState({ rating: { avg: 0, count: 0 }, reviews: [] });
   const [user, setUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', address: '' });
@@ -31,18 +41,28 @@ export default function ProfilePage() {
         updateStoredUser(res.data);
       })
       .catch((err) => setMessage({ type: 'error', text: errorMessage(err) }));
+    if (sessionUser.role !== 'admin') {
+      API.get('/reviews/received')
+        .then((res) => setReceived(res.data))
+        .catch(() => {});
+    }
   }, [sessionUser]);
 
   const handleUpdate = async (e) => {
     e.preventDefault();
-    setSaving(true);
     setMessage({ type: 'info', text: '' });
+    const phone = validatePhone(formData.phone);
+    if (!phone.ok) {
+      setMessage({ type: 'error', text: phone.message });
+      return;
+    }
+    setSaving(true);
     try {
-      const res = await API.put('/auth/profile', formData);
+      const res = await API.put('/auth/profile', { ...formData, phone: phone.value });
       setUser(res.data.user);
       updateStoredUser(res.data.user);
       setIsEditing(false);
-      setMessage({ type: 'success', text: 'อัปเดตข้อมูลสำเร็จ' });
+      toast.success('อัปเดตข้อมูลโปรไฟล์แล้ว');
     } catch (err) {
       setMessage({ type: 'error', text: errorMessage(err, 'เกิดข้อผิดพลาดในการอัปเดต') });
     } finally {
@@ -50,19 +70,47 @@ export default function ProfilePage() {
     }
   };
 
+  // เปลี่ยน/ลบรูปโปรไฟล์: อัปโหลดเสร็จแล้วบันทึกเข้าโปรไฟล์ทันที (ไม่ต้องเข้าโหมดแก้ไข)
+  const saveAvatar = async (avatarUrl) => {
+    setMessage({ type: 'info', text: '' });
+    try {
+      const res = await API.put('/auth/profile', { avatarUrl });
+      setUser(res.data.user);
+      updateStoredUser(res.data.user);
+      toast.success(avatarUrl ? 'อัปเดตรูปโปรไฟล์แล้ว' : 'ลบรูปโปรไฟล์แล้ว');
+    } catch (err) {
+      setMessage({ type: 'error', text: errorMessage(err, 'บันทึกรูปโปรไฟล์ไม่สำเร็จ') });
+    }
+  };
+
   const handleLogout = () => {
     clearSession();
-    router.replace('/login');
+    router.replace('/welcome');
   };
 
   if (!sessionUser) return <Loading text="กำลังโหลดข้อมูล..." />;
   const me = user || sessionUser;
   const isSeller = me.role === 'seller';
+  const isAdmin = me.role === 'admin';
+
+  // จำนวนงานค้างที่ต้องแสดงเป็น Badge ข้างเมนูนั้นๆ
+  const pending = (key) => taskItems.find((t) => t.key === key)?.count || 0;
 
   const menu = [
-    ...(isSeller ? [{ href: '/seller', icon: Store, label: 'ร้านค้าของฉัน (สินค้า / ออเดอร์)' }] : []),
-    ...(!isSeller ? [{ href: '/history', icon: ClipboardList, label: 'คำสั่งซื้อของฉัน' }] : []),
-    { href: '/wallet', icon: Wallet, label: 'Wallet และประวัติรายการ' },
+    ...(isAdmin
+      ? [
+          { href: '/admin', icon: ShieldCheck, label: 'จัดการระบบ (Admin)' },
+          { href: '/admin/disputes', icon: Scale, label: 'จัดการข้อพิพาท', badge: taskTotal },
+        ]
+      : []),
+    ...(isSeller
+      ? [
+          { href: '/seller', icon: Store, label: 'แดชบอร์ดร้านค้า', badge: taskTotal },
+          { href: '/seller/store', icon: Settings, label: 'ตั้งค่าร้านค้า (โลโก้/แบนเนอร์)' },
+        ]
+      : []),
+    ...(!isSeller && !isAdmin ? [{ href: '/history', icon: ClipboardList, label: 'คำสั่งซื้อของฉัน', badge: pending('buyer_confirm') }] : []),
+    ...(!isAdmin ? [{ href: '/wallet', icon: Wallet, label: 'Wallet และประวัติรายการ' }] : []),
   ];
 
   return (
@@ -73,16 +121,16 @@ export default function ProfilePage() {
         <Notice type={message.type}>{message.text}</Notice>
 
         <div className="bg-white p-5 rounded-3xl shadow-sm space-y-4">
+          <div className="flex justify-center pt-1">
+            <ImageUploader kind="avatar" shape="avatar" value={me.avatarUrl} name={me.name} onChange={saveAvatar} hint="JPEG / PNG / WebP — ระบบย่อรูปให้อัตโนมัติ" />
+          </div>
           <div className="flex items-center justify-between border-b pb-3">
             <div className="flex items-center space-x-3 min-w-0">
-              <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-700 shrink-0">
-                <User className="w-6 h-6" />
-              </div>
               <div className="min-w-0">
                 <h2 className="font-bold text-slate-900 text-sm truncate">{me.name}</h2>
                 <p className="text-xs text-slate-500 truncate">{me.email}</p>
                 <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700">
-                  {isSeller ? 'ผู้ขาย' : 'ผู้ซื้อ'}
+                  {isAdmin ? 'ผู้ดูแลระบบ' : isSeller ? 'ผู้ขาย' : 'ผู้ซื้อ'}
                 </span>
               </div>
             </div>
@@ -99,19 +147,19 @@ export default function ProfilePage() {
             <form onSubmit={handleUpdate} className="space-y-3 text-xs">
               <div>
                 <label htmlFor="p-name" className="font-bold text-slate-700">ชื่อ-นามสกุล</label>
-                <input id="p-name" type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className={inputCls} />
+                <input id="p-name" type="text" required maxLength={LIMITS.USER_NAME} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className={inputCls} />
               </div>
               <div>
                 <label htmlFor="p-phone" className="font-bold text-slate-700">เบอร์โทรศัพท์</label>
-                <input id="p-phone" type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className={inputCls} />
+                <input id="p-phone" type="tel" inputMode="tel" placeholder="0812345678" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className={inputCls} />
               </div>
               <div>
                 <label htmlFor="p-address" className="font-bold text-slate-700">{isSeller ? 'ที่อยู่ร้านค้า' : 'ที่อยู่จัดส่ง'}</label>
-                <textarea id="p-address" rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className={inputCls} />
+                <textarea id="p-address" rows={3} maxLength={500} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className={inputCls} />
               </div>
 
               <div className="flex space-x-2 pt-2">
-                <button type="submit" disabled={saving} className="flex-1 bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold py-2.5 rounded-full flex items-center justify-center space-x-1 disabled:opacity-50">
+                <button type="submit" disabled={saving} className="flex-1 bg-[#9bdadd] hover:bg-cyan-300 text-slate-900 font-bold py-2.5 rounded-full flex items-center justify-center space-x-1 disabled:opacity-50">
                   <Save className="w-4 h-4" />
                   <span>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</span>
                 </button>
@@ -133,7 +181,7 @@ export default function ProfilePage() {
                 <MapPin className="w-4 h-4 text-cyan-600 mt-0.5 shrink-0" />
                 <div>
                   <p className="font-bold text-slate-500 text-[10px]">{isSeller ? 'ที่อยู่ร้านค้า' : 'ที่อยู่จัดส่งสินค้า'}</p>
-                  <p className="font-semibold leading-relaxed">{me.address || 'ยังไม่ได้ระบุ'}</p>
+                  <p className="font-semibold leading-relaxed text-wrap-safe">{me.address || 'ยังไม่ได้ระบุ'}</p>
                 </div>
               </div>
             </div>
@@ -141,14 +189,32 @@ export default function ProfilePage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm divide-y">
-          {menu.map(({ href, icon: Icon, label }) => (
+          {menu.map(({ href, icon: Icon, label, badge }) => (
             <Link key={href} href={href} className="flex items-center gap-3 p-4 text-xs font-bold text-slate-700 hover:bg-slate-50">
               <Icon size={18} className="text-cyan-600" />
               <span className="flex-1">{label}</span>
+              {badge > 0 && <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center" aria-label={`มีงานค้าง ${badge} รายการ`}>{badge}</span>}
               <ChevronRight size={16} className="text-slate-400" />
             </Link>
           ))}
         </div>
+
+        {!isAdmin && (
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            {!isSeller && received.trust && (
+              <div className="bg-slate-50 rounded-xl p-3 space-y-1">
+                <p className="text-[10px] font-bold text-slate-500">ความน่าเชื่อถือของคุณ (ที่ผู้ขายและผู้ซื้ออื่นเห็นข้างชื่อในรีวิว)</p>
+                <TrustBadge trust={received.trust} />
+              </div>
+            )}
+            <ReviewList
+              title={isSeller ? 'รีวิวจากผู้ซื้อ' : 'รีวิวจากผู้ขาย'}
+              rating={received.rating}
+              reviews={received.reviews}
+              emptyText="ยังไม่มีรีวิว"
+            />
+          </div>
+        )}
 
         <button
           onClick={handleLogout}
