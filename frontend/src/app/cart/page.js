@@ -1,24 +1,73 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Minus, Plus, Trash2 } from 'lucide-react';
+import API, { errorMessage } from '@/lib/api';
+import { baht } from '@/lib/auth';
+import { useAuth } from '@/lib/useAuth';
+import ProductImage from '@/components/ProductImage';
+import PageHeader from '@/components/PageHeader';
+import Loading from '@/components/Loading';
+import Notice from '@/components/Notice';
 
 export default function CartPage() {
   const router = useRouter();
-  
-  // สลับ State เพื่อทดสอบหน้าตะกร้าว่างได้
-  const [cartItems, setCartItems] = useState([
-    { id: '1', title: 'ชุดโซล่าเซลล์ 15kW', price: 999999, checked: true }
-  ]);
+  const { user } = useAuth({ roles: ['buyer'] });
+  const [items, setItems] = useState(null); // null = กำลังโหลด
+  const [selected, setSelected] = useState(new Set());
+  const [error, setError] = useState('');
 
-  const totalPrice = cartItems.reduce((sum, item) => item.checked ? sum + item.price : sum, 0);
+  useEffect(() => {
+    if (!user) return;
+    API.get('/cart')
+      .then((res) => {
+        setItems(res.data.items);
+        setSelected(new Set(res.data.items.map((i) => i.productId))); // ติ๊กเลือกทุกชิ้นเป็นค่าเริ่มต้น
+      })
+      .catch((err) => {
+        setItems([]);
+        setError(errorMessage(err));
+      });
+  }, [user]);
 
-  if (cartItems.length === 0) {
+  const applyCart = (data) => {
+    setItems(data.items);
+    setSelected((prev) => new Set(data.items.map((i) => i.productId).filter((id) => prev.has(id))));
+  };
+
+  const changeQty = async (item, qty) => {
+    setError('');
+    try {
+      applyCart((await API.put(`/cart/${item.productId}`, { quantity: qty })).data);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
+
+  const remove = async (item) => {
+    setError('');
+    try {
+      applyCart((await API.delete(`/cart/${item.productId}`)).data);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
+
+  const toggle = (id) => {
+    const next = new Set(selected);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setSelected(next);
+  };
+
+  if (!user || items === null) return <Loading />;
+
+  if (items.length === 0) {
     return (
       <div className="bg-[#e0f7f7] min-h-screen flex flex-col justify-center items-center p-6 text-center">
-        <div className="text-6xl mb-4">🙏</div>
+        <div className="text-6xl mb-4">🛒</div>
         <h2 className="font-bold text-slate-800 text-base mb-1">คุณยังไม่มีสินค้าในรถเข็น</h2>
-        <p className="text-xs text-slate-500 mb-6">โปรดเลือกซื้อสินค้าจากหน้าหลัก</p>
+        <p className="text-xs text-slate-500 mb-6">โปรดเลือกซื้อสินค้าจากหน้าร้านค้า</p>
         <Link href="/shopping" className="bg-[#8be0e0] text-slate-900 font-bold px-6 py-2 rounded-full text-sm">
           ไปหน้าซื้อสินค้า
         </Link>
@@ -26,36 +75,61 @@ export default function CartPage() {
     );
   }
 
-  return (
-    <div className="bg-[#e0f7f7] min-h-screen p-4 space-y-4">
-      <h1 className="font-bold text-slate-800 text-lg border-b border-cyan-300 pb-2">รถเข็นของฉัน</h1>
+  const chosen = items.filter((i) => selected.has(i.productId));
+  const totalPrice = chosen.reduce((sum, i) => sum + i.product.price * i.quantity, 0);
 
-      <div className="space-y-3">
-        {cartItems.map((item) => (
-          <div key={item.id} className="bg-[#d5e8e8] p-3 rounded-2xl flex items-center gap-3">
-            <input 
-              type="checkbox" 
-              checked={item.checked} 
-              onChange={() => setCartItems(cartItems.map(i => i.id === item.id ? {...i, checked: !i.checked} : i))}
-              className="w-5 h-5 accent-cyan-600 rounded" 
-            />
-            <div className="w-16 h-16 bg-slate-300 rounded-lg flex-shrink-0"></div>
-            <div className="flex-1">
-              <h3 className="font-bold text-xs text-slate-800">{item.title}</h3>
-              <p className="text-xs font-black text-slate-900 mt-1">฿ {item.price.toLocaleString()}</p>
+  return (
+    <div className="bg-[#e0f7f7] min-h-screen pb-40">
+      <PageHeader title="รถเข็นของฉัน" />
+      <div className="p-4 space-y-3">
+        <Notice type="error">{error}</Notice>
+
+        {items.map((item) => {
+          const p = item.product;
+          return (
+            <div key={item.productId} className="bg-[#d5e8e8] p-3 rounded-2xl flex items-center gap-3">
+              <input
+                type="checkbox"
+                aria-label={`เลือก ${p.name}`}
+                checked={selected.has(item.productId)}
+                onChange={() => toggle(item.productId)}
+                className="w-5 h-5 accent-cyan-600 rounded shrink-0"
+              />
+              <Link href={`/product/${item.productId}`} className="shrink-0">
+                <ProductImage src={p.imageUrl} alt={p.name} className="w-16 h-16 rounded-lg" iconSize={22} />
+              </Link>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-xs text-slate-800 line-clamp-2">{p.name}</h3>
+                <p className="text-xs font-black text-slate-900 mt-1">฿ {baht(p.price)}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <div className="flex items-center gap-1 bg-white rounded-full">
+                    <button aria-label="ลดจำนวน" disabled={item.quantity <= 1} onClick={() => changeQty(item, item.quantity - 1)} className="p-1.5 disabled:opacity-30">
+                      <Minus size={13} />
+                    </button>
+                    <span className="w-5 text-center text-xs font-bold">{item.quantity}</span>
+                    <button aria-label="เพิ่มจำนวน" disabled={item.quantity >= p.stock} onClick={() => changeQty(item, item.quantity + 1)} className="p-1.5 disabled:opacity-30">
+                      <Plus size={13} />
+                    </button>
+                  </div>
+                  <button aria-label={`ลบ ${p.name} ออกจากตะกร้า`} onClick={() => remove(item)} className="p-1.5 text-red-500">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                {p.stock < item.quantity && <p className="text-[10px] text-red-500 font-bold mt-1">สต็อกไม่พอ (เหลือ {p.stock})</p>}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Checkout Bar */}
       <div className="fixed bottom-14 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t p-4 flex justify-between items-center z-40">
         <div className="text-xs font-bold text-slate-700">
-          ราคารวม: <span className="text-sm font-black text-slate-900">฿ {totalPrice.toLocaleString()}</span>
+          ราคารวม ({chosen.length} รายการ): <span className="text-sm font-black text-slate-900">฿ {baht(totalPrice)}</span>
         </div>
-        <button 
-          onClick={() => router.push('/checkout')}
-          className="bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold px-6 py-2 rounded-full text-sm"
+        <button
+          disabled={chosen.length === 0}
+          onClick={() => router.push(`/checkout?ids=${chosen.map((i) => i.productId).join(',')}`)}
+          className="bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold px-6 py-2 rounded-full text-sm disabled:opacity-40"
         >
           ชำระเงิน
         </button>

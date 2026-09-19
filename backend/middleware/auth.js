@@ -1,14 +1,25 @@
 const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('../config');
 
-module.exports = function (req, res, next) {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ message: 'ไม่มี Token, ปฏิเสธการเข้าถึง' });
+function auth(req, res, next) {
+  const header = req.header('Authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if (!token) return res.status(401).json({ message: 'กรุณาเข้าสู่ระบบ' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    req.user = jwt.verify(token, JWT_SECRET); // { id, email, role }
     next();
   } catch (err) {
-    res.status(400).json({ message: 'Token ไม่ถูกต้องหรือหมดอายุ' });
+    return res.status(401).json({ message: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' });
   }
+}
+
+// ใช้ต่อจาก auth เช่น router.post('/', auth, requireRole('seller'), handler)
+auth.requireRole = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.user?.role)) {
+    return res.status(403).json({ message: 'บัญชีของคุณไม่มีสิทธิ์ทำรายการนี้' });
+  }
+  next();
 };
+
+module.exports = auth;
