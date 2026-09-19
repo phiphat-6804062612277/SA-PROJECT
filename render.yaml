@@ -1,0 +1,20 @@
+# Render Blueprint สำหรับ deploy backend (Express + MongoDB Atlas)
+# วิธีใช้: Render Dashboard → New → Blueprint → เลือก repo นี้
+services:
+  - type: web
+    name: solify-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI        # ใส่ connection string ของ MongoDB Atlas
+        sync: false
+      - key: CLIENT_ORIGIN    # โดเมน Vercel ของ frontend เช่น https://solify.vercel.app
+        sync: false
+      - key: JWT_SECRET       # Render สุ่มให้อัตโนมัติ
+        generateValue: true
