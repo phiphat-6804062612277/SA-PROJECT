@@ -10,12 +10,16 @@ if (!isProd && !process.env.JWT_SECRET) {
 }
 
 const app = require('./app');
+const { startAutoRelease } = require('./jobs/autoRelease');
+const { startImageCleanup } = require('./jobs/imageCleanup');
 
 mongoose
   .connect(MONGO_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB');
     app.listen(PORT, () => console.log(`🚀 Solify API running on port ${PORT}`));
+    startAutoRelease();
+    startImageCleanup();
   })
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err.message);

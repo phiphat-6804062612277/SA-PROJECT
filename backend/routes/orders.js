@@ -4,18 +4,24 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
+const Review = require('../models/Review');
 const auth = require('../middleware/auth');
 const { requireRole } = auth;
 const { credit, debitIfEnough } = require('../utils/wallet');
-const { isValidId } = require('../utils/helpers');
+const { isValidId, VISIBLE_PRODUCT, isProductBuyable, normalizeTracking, trackingError } = require('../utils/helpers');
+const { releaseToSeller, settleQuietly, autoReleaseTime } = require('../utils/escrow');
+const { AUTO_RELEASE_DAYS } = require('../config');
+const { ratingsOfMany, buyerTrust } = require('../utils/ratings');
 
 const router = express.Router();
 
 /*
  * Escrow flow
  *   checkout  : หักเงินผู้ซื้อ → เงินถูก "ถือ" ไว้ที่ Order (escrowStatus = HELD)
- *   ship      : ผู้ขายใส่เลขพัสดุ  PENDING_SHIPMENT → SHIPPED
+ *   ship      : ผู้ขายใส่เลขพัสดุ (ห้ามซ้ำ/แก้ไม่ได้) PENDING_SHIPMENT → SHIPPED และตั้ง autoReleaseAt = +7 วัน
  *   complete  : ผู้ซื้อกดยืนยันรับของ SHIPPED → COMPLETED → โอนเงินเข้า Wallet ผู้ขาย (RELEASED)
+ *   auto      : Worker (jobs/autoRelease.js) ปล่อยเงินเองเมื่อ SHIPPED ครบ autoReleaseAt และไม่ถูก DISPUTED
+ *   dispute   : ผู้ซื้อเปิดข้อพิพาทตอน SHIPPED (routes/disputes.js) → DISPUTED เงินถูก Freeze รอ Admin ตัดสิน
  *   cancel    : ก่อนจัดส่ง (PENDING_SHIPMENT) ผู้ซื้อหรือผู้ขายยกเลิกได้ → คืนเงิน + คืนสต็อก (REFUNDED)
  *
  * การเปลี่ยนสถานะทุกครั้งใช้ findOneAndUpdate แบบมีเงื่อนไขสถานะเดิม จึงกดซ้ำ/กดพร้อมกัน
@@ -49,8 +55,8 @@ router.post('/checkout', auth, requireRole('buyer'), async (req, res) => {
   const lines = [];
   for (const item of cartItems) {
     const p = byId.get(String(item.productId));
-    if (!p || p.isActive === false) {
-      return res.status(400).json({ message: 'มีสินค้าในตะกร้าที่ถูกลบออกจากร้านแล้ว กรุณานำออกจากตะกร้า' });
+    if (!isProductBuyable(p)) {
+      return res.status(400).json({ message: 'มีสินค้าในตะกร้าที่ไม่พร้อมจำหน่ายแล้ว กรุณานำออกจากตะกร้า' });
     }
     if (String(p.sellerId) === String(req.user.id)) {
       return res.status(400).json({ message: 'ไม่สามารถซื้อสินค้าของตัวเองได้' });
@@ -85,7 +91,7 @@ router.post('/checkout', auth, requireRole('buyer'), async (req, res) => {
     // 4) จองสต็อก (atomic ต่อสินค้า)
     for (const l of lines) {
       const ok = await Product.findOneAndUpdate(
-        { _id: l.product._id, isActive: { $ne: false }, stock: { $gte: l.quantity } },
+        { _id: l.product._id, ...VISIBLE_PRODUCT, stock: { $gte: l.quantity } },
         { $inc: { stock: -l.quantity } }
       );
       if (!ok) {
@@ -144,20 +150,41 @@ router.post('/checkout', auth, requireRole('buyer'), async (req, res) => {
 });
 
 // ------------------------------------------------------------------- lists
+// แนบรีวิวของ Order เข้าไปด้วย: myReview = รีวิวที่ฉันเขียน, reviewOfMe = รีวิวที่อีกฝ่ายเขียนถึงฉัน
+async function attachReviews(orders, userId) {
+  const reviews = await Review.find({ orderId: { $in: orders.map((o) => o._id) } });
+  return orders.map((o) => {
+    const obj = o.toObject();
+    const mine = reviews.find((r) => String(r.orderId) === String(o._id) && String(r.reviewerId) === String(userId));
+    const theirs = reviews.find((r) => String(r.orderId) === String(o._id) && String(r.revieweeId) === String(userId));
+    obj.myReview = mine || null;
+    obj.reviewOfMe = theirs || null;
+    return obj;
+  });
+}
+
 // คำสั่งซื้อของฉัน (ผู้ซื้อ)
 router.get('/mine', auth, async (req, res) => {
   const orders = await Order.find({ buyerId: req.user.id })
     .sort({ createdAt: -1 })
-    .populate('sellerId', 'name');
-  res.json(orders);
+    .populate('sellerId', 'name storeName storeLogoUrl');
+  res.json(await attachReviews(orders, req.user.id));
 });
 
-// ออเดอร์ที่เข้ามาที่ร้านฉัน (ผู้ขาย)
+// ออเดอร์ที่เข้ามาที่ร้านฉัน (ผู้ขาย) — แนบคะแนนเฉลี่ยของผู้ซื้อให้ผู้ขายประกอบการตัดสินใจ
 router.get('/selling', auth, requireRole('seller'), async (req, res) => {
   const orders = await Order.find({ sellerId: req.user.id })
     .sort({ createdAt: -1 })
-    .populate('buyerId', 'name phone');
-  res.json(orders);
+    .populate('buyerId', 'name phone avatarUrl');
+  const withReviews = await attachReviews(orders, req.user.id);
+  const buyerIds = orders.map((o) => o.buyerId?._id).filter(Boolean);
+  const [ratings, trust] = await Promise.all([ratingsOfMany(buyerIds, 'SELLER_TO_BUYER'), buyerTrust(buyerIds)]);
+  res.json(
+    withReviews.map((o) => {
+      const buyerRating = ratings.get(String(o.buyerId?._id)) || { avg: 0, count: 0 };
+      return { ...o, buyerRating, buyerTrust: trust.get(String(o.buyerId?._id)) || null };
+    })
+  );
 });
 
 // -------------------------------------------------------------- transitions
@@ -177,48 +204,58 @@ async function explainFailure(orderId, party, userId) {
   return { status: 400, message: `ทำรายการนี้ไม่ได้ในสถานะปัจจุบัน (${order.status})` };
 }
 
-// ผู้ขายใส่เลขพัสดุ
+// ผู้ขายใส่เลขพัสดุ (ทำได้ครั้งเดียว — บันทึกแล้วผู้ขายแก้ไขเองไม่ได้)
 router.put('/:id/ship', auth, requireRole('seller'), async (req, res) => {
   if (!findOwnedId(req, res)) return;
-  const trackingNumber = String(req.body?.trackingNumber || '').trim();
-  if (!trackingNumber) return res.status(400).json({ message: 'กรุณาระบุเลขพัสดุ' });
+  const trackingNumber = normalizeTracking(req.body?.trackingNumber);
+  const invalid = trackingError(trackingNumber);
+  if (invalid) return res.status(400).json({ message: invalid });
 
-  const order = await Order.findOneAndUpdate(
-    { _id: req.params.id, sellerId: req.user.id, status: 'PENDING_SHIPMENT' },
-    { status: 'SHIPPED', trackingNumber, shippedAt: new Date() },
-    { new: true }
-  );
+  // เลขพัสดุนี้เคยถูกใช้กับออเดอร์อื่นแล้วหรือไม่
+  const used = await Order.exists({ trackingNumber, _id: { $ne: req.params.id } });
+  if (used) {
+    return res.status(409).json({ message: 'เลขพัสดุนี้ถูกใช้กับคำสั่งซื้ออื่นไปแล้ว กรุณาตรวจสอบเลขพัสดุอีกครั้ง' });
+  }
+
+  const now = new Date();
+  let order;
+  try {
+    order = await Order.findOneAndUpdate(
+      { _id: req.params.id, sellerId: req.user.id, status: 'PENDING_SHIPMENT' },
+      { status: 'SHIPPED', trackingNumber, shippedAt: now, autoReleaseAt: autoReleaseTime(now) },
+      { new: true }
+    );
+  } catch (err) {
+    // ชนกับ unique index (มีคนบันทึกเลขเดียวกันพร้อมกัน)
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: 'เลขพัสดุนี้ถูกใช้กับคำสั่งซื้ออื่นไปแล้ว กรุณาตรวจสอบเลขพัสดุอีกครั้ง' });
+    }
+    throw err;
+  }
   if (!order) {
     const f = await explainFailure(req.params.id, 'sellerId', req.user.id);
+    if (f.status === 400) {
+      f.message = 'บันทึกเลขพัสดุได้เพียงครั้งเดียวและแก้ไขเองไม่ได้ (หากเลขพัสดุผิด กรุณาติดต่อ Admin)';
+    }
     return res.status(f.status).json({ message: f.message });
   }
-  res.json({ message: 'อัปเดตสถานะเป็นจัดส่งแล้ว', order });
+  res.json({
+    message: `บันทึกเลขพัสดุแล้ว ระบบจะปล่อยเงินให้อัตโนมัติภายใน ${AUTO_RELEASE_DAYS} วันหากผู้ซื้อไม่เปิดข้อพิพาท`,
+    order,
+  });
 });
 
 // ผู้ซื้อยืนยันรับสินค้า → ปล่อยเงินให้ผู้ขาย
 router.put('/:id/complete', auth, requireRole('buyer'), async (req, res) => {
   if (!findOwnedId(req, res)) return;
 
-  const order = await Order.findOneAndUpdate(
+  const order = await releaseToSeller(
     { _id: req.params.id, buyerId: req.user.id, status: 'SHIPPED' },
-    { status: 'COMPLETED', escrowStatus: 'RELEASED', completedAt: new Date() },
-    { new: true }
+    { by: 'buyer' }
   );
   if (!order) {
     const f = await explainFailure(req.params.id, 'buyerId', req.user.id);
     return res.status(f.status).json({ message: f.message });
-  }
-
-  try {
-    await credit(order.sellerId, order.totalAmount, {
-      type: 'RECEIVE_PAYMENT',
-      description: 'รับเงินจากการขายสินค้า (ผู้ซื้อยืนยันรับสินค้าแล้ว)',
-      orderId: order._id,
-    });
-  } catch (err) {
-    // โอนเงินไม่สำเร็จ → ย้อนสถานะให้ผู้ซื้อกดยืนยันใหม่ได้ ไม่ให้เงินหาย
-    await Order.updateOne({ _id: order._id }, { status: 'SHIPPED', escrowStatus: 'HELD', $unset: { completedAt: 1 } });
-    throw err;
   }
   res.json({ message: 'ยืนยันรับสินค้าแล้ว เงินถูกโอนให้ผู้ขาย', order });
 });
@@ -232,7 +269,7 @@ router.put('/:id/cancel', auth, async (req, res) => {
   const party = role === 'seller' ? 'sellerId' : 'buyerId';
   const order = await Order.findOneAndUpdate(
     { _id: req.params.id, [party]: req.user.id, status: 'PENDING_SHIPMENT' },
-    { status: 'CANCELLED', escrowStatus: 'REFUNDED', cancelledAt: new Date(), cancelledBy: role },
+    { status: 'CANCELLED', escrowStatus: 'REFUNDED', cancelledAt: new Date(), cancelledBy: role, settled: false },
     { new: true }
   );
   if (!order) {
@@ -241,11 +278,8 @@ router.put('/:id/cancel', auth, async (req, res) => {
     return res.status(f.status).json({ message: f.message });
   }
 
-  await credit(order.buyerId, order.totalAmount, {
-    type: 'REFUND',
-    description: role === 'seller' ? 'คืนเงิน: ผู้ขายยกเลิกคำสั่งซื้อ' : 'คืนเงิน: ยกเลิกคำสั่งซื้อ',
-    orderId: order._id,
-  });
+  // คืนเงินผู้ซื้อ (ถ้าพลาดกลางทาง Worker จะคืนให้ภายหลัง ไม่ให้เงินหาย)
+  await settleQuietly(order);
   for (const item of order.items) {
     await Product.updateOne({ _id: item.productId }, { $inc: { stock: item.quantity } });
   }

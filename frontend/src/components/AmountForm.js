@@ -71,7 +71,7 @@ export default function AmountForm({ title, endpoint, submitLabel, successText, 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold py-3 rounded-full text-sm transition shadow-sm disabled:opacity-50"
+            className="w-full bg-[#9bdadd] hover:bg-cyan-300 text-slate-900 font-bold py-3 rounded-full text-sm transition shadow-sm disabled:opacity-50"
           >
             {loading ? 'กำลังประมวลผล...' : submitLabel}
           </button>

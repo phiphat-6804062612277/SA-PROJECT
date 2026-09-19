@@ -9,17 +9,18 @@ import PageHeader from '@/components/PageHeader';
 import Loading from '@/components/Loading';
 
 // ประเภทรายการที่ทำให้เงินเข้า Wallet
-const INCOMING = ['TOPUP', 'REFUND', 'RECEIVE_PAYMENT'];
+const INCOMING = ['TOPUP', 'REFUND', 'RECEIVE_PAYMENT', 'AUTO_RELEASE'];
 const LABELS = {
   TOPUP: 'เติมเงิน',
   PAYMENT: 'ชำระค่าสินค้า',
   RECEIVE_PAYMENT: 'รับเงินจากการขาย',
+  AUTO_RELEASE: 'รับเงินจากการขาย (ปล่อยอัตโนมัติ)',
   REFUND: 'คืนเงิน',
   WITHDRAW: 'ถอนเงิน',
 };
 
 export default function WalletPage() {
-  const { user } = useAuth();
+  const { user } = useAuth({ roles: ['buyer', 'seller'] });
   const [wallet, setWallet] = useState({ balance: 0, transactions: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -42,14 +43,19 @@ export default function WalletPage() {
         <div className="bg-slate-100/80 p-5 rounded-3xl text-center shadow-sm space-y-2">
           <h2 className="font-bold text-xl text-slate-800 tracking-wider">💳 WALLET</h2>
           <div className="text-2xl font-black text-slate-900">
-            {loading ? '...' : baht(wallet.balance)} <span className="text-sm font-normal">บาท</span>
+            <span className="money">{loading ? '...' : baht(wallet.balance)}</span> <span className="text-sm font-normal">บาท</span>
           </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
+          {user.role === 'seller' && (
+            <p className="text-[11px] text-slate-500">รายได้จากการขายจะเข้า Wallet เมื่อผู้ซื้อยืนยันรับสินค้า — ผู้ขายถอนเงินได้อย่างเดียว</p>
+          )}
 
           <div className="flex justify-center gap-2 mt-2">
-            <Link href="/wallet/topup" className="bg-[#8be0e0] hover:bg-cyan-300 text-slate-800 font-bold px-5 py-2 rounded-full text-sm transition">
-              เติมเงิน
-            </Link>
+            {user.role !== 'seller' && (
+              <Link href="/wallet/topup" className="bg-[#9bdadd] hover:bg-cyan-300 text-slate-800 font-bold px-5 py-2 rounded-full text-sm transition">
+                เติมเงิน
+              </Link>
+            )}
             {user.role === 'seller' && (
               <Link href="/wallet/withdraw" className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-5 py-2 rounded-full text-sm transition">
                 ถอนเงิน
@@ -75,7 +81,7 @@ export default function WalletPage() {
                     )}
                     <div className="min-w-0">
                       <p className="font-bold text-slate-800">{LABELS[tx.type] || tx.type}</p>
-                      {tx.description && <p className="text-[10px] text-slate-500 line-clamp-2">{tx.description}</p>}
+                      {tx.description && <p className="text-[10px] text-slate-500 line-clamp-2 text-wrap-safe">{tx.description}</p>}
                       <p className="text-[10px] text-slate-400">{new Date(tx.createdAt).toLocaleString('th-TH')}</p>
                     </div>
                   </div>

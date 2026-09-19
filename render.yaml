@@ -18,3 +18,15 @@ services:
         sync: false
       - key: JWT_SECRET       # Render สุ่มให้อัตโนมัติ
         generateValue: true
+      - key: ADMIN_SIGNUP_CODE  # รหัสลับสำหรับสมัคร Admin (Render สุ่มให้ ดูค่าได้ที่ Dashboard)
+        generateValue: true
+      - key: OTP_DEMO_MODE      # true = แสดง OTP บนหน้าจอ (Demo) / false = ส่งอีเมลจริงผ่าน Resend
+        value: "true"
+      - key: RESEND_API_KEY     # (ไม่บังคับ) ใช้เมื่อ OTP_DEMO_MODE=false
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: AUTO_RELEASE_DAYS  # ปล่อยเงินให้ผู้ขายอัตโนมัติหลังจัดส่งกี่วัน
+        value: "7"
+      - key: AUTO_RELEASE_INTERVAL_MINUTES  # Worker ตรวจทุกกี่นาที
+        value: "60"

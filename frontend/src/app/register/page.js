@@ -1,48 +1,39 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ShoppingBag, Store } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
-import { saveSession, homeFor } from '@/lib/auth';
+import { saveSession, homeFor, safeNext } from '@/lib/auth';
+import { LIMITS } from '@/lib/limits';
+import AuthShell, { authLabel, authInput, authButton, OrDivider } from '@/components/AuthShell';
+import PasswordInput from '@/components/PasswordInput';
 import Notice from '@/components/Notice';
 
-const inputCls =
-  'w-full mt-1 p-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-cyan-500';
-
-const ROLES = [
-  { value: 'buyer', label: 'ผู้ซื้อ', desc: 'เลือกซื้อสินค้า', icon: ShoppingBag },
-  { value: 'seller', label: 'ผู้ขาย', desc: 'เปิดร้านลงสินค้า', icon: Store },
-];
-
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    phone: '',
-    address: '',
-    role: 'buyer',
-  });
+  const params = useSearchParams();
+  const [form, setForm] = useState({ email: '', name: '', password: '', role: '', adminCode: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const q = params.get('next') ? `?next=${encodeURIComponent(params.get('next'))}` : '';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (formData.password.length < 6) {
-      setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
-      return;
-    }
-    setLoading(true);
+    if (!form.role) return setError('กรุณาเลือกบทบาท (Seller / Buyer / Admin)');
+    if (form.password.length < 6) return setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
 
+    setLoading(true);
     try {
-      const res = await API.post('/auth/register', formData);
+      // ค่าที่ไม่เกี่ยวข้อง (adminCode ของผู้ซื้อ/ผู้ขาย) ไม่ต้องส่ง
+      const payload = { email: form.email, name: form.name, password: form.password, role: form.role };
+      if (form.role === 'admin') payload.adminCode = form.adminCode;
+      const res = await API.post('/auth/register', payload);
       saveSession(res.data); // สมัครเสร็จล็อกอินให้เลย
-      router.replace(homeFor(res.data.user));
+      router.replace(safeNext(params.get('next'), homeFor(res.data.user)));
     } catch (err) {
       setError(errorMessage(err, 'เกิดข้อผิดพลาดในการสมัครสมาชิก'));
     } finally {
@@ -51,86 +42,74 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="bg-[#e0f7f7] min-h-screen flex items-center justify-center p-4">
-      <div className="bg-white p-6 rounded-3xl shadow-sm w-full max-w-md space-y-4">
-        <h1 className="text-xl font-bold text-center text-slate-800">สมัครสมาชิก</h1>
+    <AuthShell>
+      <h1 className="font-serif font-bold text-2xl text-slate-900 text-center mt-2">sign up</h1>
 
+      <form onSubmit={handleSubmit} className="mt-6 space-y-3">
         <Notice type="error">{error}</Notice>
 
-        <form onSubmit={handleSubmit} className="space-y-3 text-xs">
-          <div>
-            <span className="font-bold text-slate-700">คุณต้องการสมัครเป็น</span>
-            <div className="grid grid-cols-2 gap-2 mt-1" role="radiogroup" aria-label="บทบาท">
-              {ROLES.map(({ value, label, desc, icon: Icon }) => {
-                const active = formData.role === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setFormData({ ...formData, role: value })}
-                    className={`p-3 rounded-2xl border-2 text-center transition ${
-                      active ? 'border-cyan-500 bg-cyan-50' : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
-                  >
-                    <Icon className={`mx-auto ${active ? 'text-cyan-600' : 'text-slate-400'}`} size={22} />
-                    <p className="font-bold text-slate-800 mt-1 text-sm">{label}</p>
-                    <p className="text-[10px] text-slate-500">{desc}</p>
-                  </button>
-                );
-              })}
-            </div>
+        <div>
+          <label htmlFor="email" className={authLabel}>Email</label>
+          <input id="email" type="email" required autoComplete="email" maxLength={100} value={form.email} onChange={set('email')} placeholder="Enter mail" className={authInput} />
+        </div>
+
+        <div>
+          <label htmlFor="name" className={authLabel}>User Name</label>
+          <input id="name" type="text" required autoComplete="username" maxLength={LIMITS.USER_NAME} value={form.name} onChange={set('name')} placeholder="Enter User name" className={authInput} />
+        </div>
+
+        <div>
+          <label htmlFor="password" className={authLabel}>Password</label>
+          <PasswordInput id="password" value={form.password} onChange={set('password')} autoComplete="new-password" minLength={6} />
+          <p className="text-[10px] text-slate-500 mt-1">อย่างน้อย 6 ตัวอักษร</p>
+        </div>
+
+        <div>
+          <label htmlFor="role" className={authLabel}>Role</label>
+          <div className="relative">
+            <select
+              id="role"
+              required
+              value={form.role}
+              onChange={set('role')}
+              className={`${authInput} appearance-none pr-9 ${form.role ? '' : 'text-slate-500 text-xs'}`}
+            >
+              <option value="" disabled>Seller / Buyer/Admin</option>
+              <option value="buyer">Buyer (ผู้ซื้อ)</option>
+              <option value="seller">Seller (ผู้ขาย)</option>
+              <option value="admin">Admin (ผู้ดูแลระบบ)</option>
+            </select>
+            <ChevronDown size={18} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-900 pointer-events-none" />
           </div>
+        </div>
 
+        {form.role === 'admin' && (
           <div>
-            <label htmlFor="name" className="font-bold text-slate-700">ชื่อ-นามสกุล</label>
-            <input id="name" type="text" name="name" required value={formData.name} onChange={handleChange} className={inputCls} placeholder="สมชาย สายลม" />
+            <label htmlFor="adminCode" className={authLabel}>Admin Code</label>
+            <PasswordInput id="adminCode" value={form.adminCode} onChange={set('adminCode')} placeholder="รหัสลับสำหรับผู้ดูแลระบบ" />
+            <p className="text-[10px] text-slate-500 mt-1">ต้องใช้รหัสที่เจ้าของระบบตั้งไว้ (ADMIN_SIGNUP_CODE)</p>
           </div>
+        )}
 
-          <div>
-            <label htmlFor="email" className="font-bold text-slate-700">อีเมล</label>
-            <input id="email" type="email" name="email" required autoComplete="email" value={formData.email} onChange={handleChange} className={inputCls} placeholder="example@gmail.com" />
-          </div>
+        <button type="submit" disabled={loading} className={`${authButton} mt-1`}>
+          {loading ? 'signing up...' : 'sign up'}
+        </button>
+      </form>
 
-          <div>
-            <label htmlFor="password" className="font-bold text-slate-700">รหัสผ่าน (อย่างน้อย 6 ตัว)</label>
-            <input id="password" type="password" name="password" required minLength={6} autoComplete="new-password" value={formData.password} onChange={handleChange} className={inputCls} placeholder="••••••••" />
-          </div>
+      <OrDivider />
 
-          <div>
-            <label htmlFor="phone" className="font-bold text-slate-700">เบอร์โทรศัพท์</label>
-            <input id="phone" type="tel" name="phone" value={formData.phone} onChange={handleChange} className={inputCls} placeholder="0812345678" />
-          </div>
-
-          <div>
-            <label htmlFor="address" className="font-bold text-slate-700">
-              {formData.role === 'seller' ? 'ที่อยู่ร้านค้า' : 'ที่อยู่จัดส่ง'}
-            </label>
-            <textarea
-              id="address"
-              name="address"
-              rows={2}
-              value={formData.address}
-              onChange={handleChange}
-              className={inputCls}
-              placeholder="123/45 ถนนวิภาวดีรังสิต แขวงลาดยาว เขตจตุจักร กทม. 10900"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#8be0e0] hover:bg-cyan-300 text-slate-900 font-bold py-3 rounded-full text-sm mt-2 disabled:opacity-50"
-          >
-            {loading ? 'กำลังบันทึก...' : 'สมัครสมาชิก'}
-          </button>
-        </form>
-
-        <p className="text-center text-xs text-slate-500">
-          มีบัญชีอยู่แล้ว? <Link href="/login" className="text-cyan-600 font-bold">เข้าสู่ระบบ</Link>
-        </p>
+      <div className="flex justify-between text-[11px] text-slate-800">
+        <span>Already have an account?</span>
+        <Link href={`/login${q}`} className="text-blue-600 hover:underline">log in</Link>
       </div>
-    </div>
+    </AuthShell>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
   );
 }

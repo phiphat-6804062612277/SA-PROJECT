@@ -2,7 +2,7 @@ const express = require('express');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const auth = require('../middleware/auth');
-const { isValidId } = require('../utils/helpers');
+const { isValidId, VISIBLE_PRODUCT, isProductBuyable } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.use(auth, auth.requireRole('buyer'));
 async function sendCart(req, res, status = 200) {
   const cart = await Cart.findOne({ userId: req.user.id }).populate('items.productId');
   const items = (cart?.items || [])
-    .filter((i) => i.productId && i.productId.isActive !== false) // ตัดสินค้าที่ถูกลบออก
+    .filter((i) => isProductBuyable(i.productId)) // ตัดสินค้าที่ถูกลบ/ถูกระงับออก
     .map((i) => ({
       productId: i.productId._id,
       quantity: i.quantity,
@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ message: 'จำนวนสินค้าไม่ถูกต้อง' });
   }
 
-  const product = await Product.findOne({ _id: productId, isActive: { $ne: false } });
+  const product = await Product.findOne({ _id: productId, ...VISIBLE_PRODUCT });
   if (!product) return res.status(404).json({ message: 'ไม่พบสินค้า' });
   if (String(product.sellerId) === String(req.user.id)) {
     return res.status(400).json({ message: 'ไม่สามารถซื้อสินค้าของตัวเองได้' });
