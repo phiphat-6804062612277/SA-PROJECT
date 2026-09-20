@@ -2,70 +2,54 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingBag, Wallet, House, ShoppingCart, User, Store, ShieldCheck, Scale } from 'lucide-react';
-import { getStoredUser } from '@/lib/auth';
+import { getStoredUser, hasToken, USER_EVENT } from '@/lib/auth';
+import { navFor } from '@/lib/nav';
 import NotificationBadge from '@/components/NotificationBadge';
 import { useNotifications } from '@/components/NotificationProvider';
 
 const HIDE_ON = ['/welcome', '/login', '/register', '/forgot-password', '/suspended'];
 
+// แถบเมนูล่าง: 5 เมนูตามบทบาท (Buyer / Seller / Admin) มีป้ายชื่อใต้ไอคอน และ Badge (!) ที่เมนูที่มีงานค้าง
+// ความสูงคงที่ 68px — หน้าอื่นที่ลอยเหนือแถบนี้ (ห้องแชต / แถบซื้อสินค้า) ใช้ bottom-[68px]
 export default function BottomNav() {
   const pathname = usePathname();
-  const [role, setRole] = useState(null);
-  const { total } = useNotifications();
+  const { countOf } = useNotifications();
+  const [user, setUser] = useState(undefined); // undefined = ยังไม่อ่านจาก localStorage (กันเมนูของแขกวาบก่อนโหลดเสร็จ)
 
-  // อ่านบทบาทใหม่ทุกครั้งที่เปลี่ยนหน้า (เช่น เพิ่งล็อกอิน/ออกจากระบบ)
+  // อ่านผู้ใช้ใหม่ทุกครั้งที่เปลี่ยนหน้า / เมื่อมีการล็อกอิน-ออกจากระบบ-แก้โปรไฟล์
   useEffect(() => {
-    setRole(getStoredUser()?.role || null);
+    const read = () => setUser(hasToken() ? getStoredUser() : null);
+    read();
+    window.addEventListener(USER_EVENT, read);
+    return () => window.removeEventListener(USER_EVENT, read);
   }, [pathname]);
 
-  // ไม่แสดง BottomNav ในหน้า Auth
+  // ไม่แสดง BottomNav ในหน้า Auth / หน้าบัญชีถูกระงับ
   if (HIDE_ON.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null;
 
-  // ผู้ขายเห็นปุ่ม "ร้านค้า" / Admin เห็นปุ่ม "จัดการระบบ" แทนตะกร้า
-  const third =
-    role === 'seller'
-      ? { href: '/seller', icon: Store, label: 'Store' }
-      : role === 'admin'
-        ? { href: '/admin', icon: ShieldCheck, label: 'Admin' }
-        : { href: '/cart', icon: ShoppingCart, label: 'Cart' };
-
-  const navItems = [
-    { href: '/shopping', icon: ShoppingBag, label: 'Shopping' },
-    // Admin ไม่มี Wallet — แทนด้วยเมนูจัดการข้อพิพาท
-    role === 'admin' ? { href: '/admin/disputes', icon: Scale, label: 'Disputes' } : { href: '/wallet', icon: Wallet, label: 'Wallet' },
-    { href: '/', icon: House, label: 'Home' },
-    third,
-    { href: '/profile', icon: User, label: 'Profile' },
-  ];
-
-  // Badge ! แสดงที่แท็บที่มีงานรออยู่: ผู้ซื้อ = โปรไฟล์ (→ คำสั่งซื้อ), ผู้ขาย = ร้านค้า, Admin = ข้อพิพาท
-  const badgeHref = role === 'seller' ? '/seller' : role === 'admin' ? '/admin/disputes' : role === 'buyer' ? '/profile' : null;
-
-  // /admin (แดชบอร์ด) ไม่ต้อง active ซ้อนกับ /admin/disputes
-  const isActive = (href) => {
-    if (href === '/') return pathname === '/';
-    if (href === '/admin') return pathname === '/admin';
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
+  const items = user === undefined ? [] : navFor(user);
 
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#9bdadd] py-3 px-5 flex justify-between items-center z-50">
-      {navItems.map((item) => {
-        const Icon = item.icon;
-        const active = isActive(item.href);
+    <nav aria-label="เมนูหลัก" className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md h-[68px] bg-[#9bdadd] shadow-[0_-4px_14px_rgba(0,0,0,0.08)] z-50 flex items-stretch px-1">
+      {items.map(({ href, label, icon: Icon, match, badge, badgeLabel }) => {
+        const active = match(pathname);
+        const count = badge ? countOf(...badge) : 0;
         return (
           <Link
-            key={item.href}
-            href={item.href}
-            aria-label={item.label}
+            key={href}
+            href={href}
             aria-current={active ? 'page' : undefined}
-            className={`relative w-11 h-11 rounded-full flex items-center justify-center transition ${
-              active ? 'bg-white text-slate-900 shadow ring-2 ring-white' : 'bg-[#c9f3f5] text-slate-800 hover:bg-white'
-            }`}
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 rounded-xl"
           >
-            <Icon size={20} />
-            {item.href === badgeHref && <NotificationBadge count={total} />}
+            <span
+              className={`relative flex items-center justify-center h-7 w-12 rounded-full transition ${
+                active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-700'
+              }`}
+            >
+              <Icon size={20} strokeWidth={active ? 2.4 : 2} />
+              <NotificationBadge count={count} label={badgeLabel} />
+            </span>
+            <span className={`text-[10px] leading-none truncate max-w-full px-0.5 ${active ? 'font-black text-slate-900' : 'font-semibold text-slate-700'}`}>{label}</span>
           </Link>
         );
       })}

@@ -1,8 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Phone, MapPin, Edit3, Save, LogOut, ClipboardList, Wallet, Store, ChevronRight, ShieldCheck, Settings, Scale, MessageCircle } from 'lucide-react';
+import { Phone, MapPin, Edit3, Save, LogOut } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { clearSession, updateStoredUser } from '@/lib/auth';
 import { validatePhone } from '@/lib/phone';
@@ -14,7 +13,6 @@ import Notice from '@/components/Notice';
 import ReviewList from '@/components/ReviewList';
 import ImageUploader from '@/components/ImageUploader';
 import TrustBadge from '@/components/TrustBadge';
-import { useNotifications } from '@/components/NotificationProvider';
 import { useToast } from '@/components/Toast';
 
 const inputCls =
@@ -24,7 +22,6 @@ export default function ProfilePage() {
   const router = useRouter();
   const { user: sessionUser } = useAuth();
   const toast = useToast();
-  const { total: taskTotal, items: taskItems } = useNotifications();
   const [received, setReceived] = useState({ rating: { avg: 0, count: 0 }, reviews: [] });
   const [user, setUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -93,37 +90,17 @@ export default function ProfilePage() {
   const isSeller = me.role === 'seller';
   const isAdmin = me.role === 'admin';
 
-  // จำนวนงานค้างที่ต้องแสดงเป็น Badge ข้างเมนูนั้นๆ
-  const pending = (key) => taskItems.find((t) => t.key === key)?.count || 0;
-
-  const menu = [
-    ...(isAdmin
-      ? [
-          { href: '/admin', icon: ShieldCheck, label: 'จัดการระบบ (Admin)' },
-          { href: '/admin/disputes', icon: Scale, label: 'จัดการข้อพิพาท', badge: taskTotal },
-        ]
-      : []),
-    ...(isSeller
-      ? [
-          { href: '/seller', icon: Store, label: 'แดชบอร์ดร้านค้า', badge: taskTotal },
-          { href: '/seller/store', icon: Settings, label: 'ตั้งค่าร้านค้า (โลโก้/แบนเนอร์)' },
-        ]
-      : []),
-    ...(!isSeller && !isAdmin ? [{ href: '/history', icon: ClipboardList, label: 'คำสั่งซื้อของฉัน', badge: pending('buyer_confirm') }] : []),
-    ...(!isAdmin ? [{ href: '/wallet', icon: Wallet, label: 'Wallet และประวัติรายการ' }] : []),
-    { href: '/chat', icon: MessageCircle, label: isAdmin ? 'กล่องข้อความ / คำขออุทธรณ์' : 'ข้อความ (ร้านค้า / Admin)', badge: pending('chat_unread') },
-    ...(!isAdmin ? [{ href: '/chat/new?support=1', icon: ShieldCheck, label: 'ติดต่อ Admin' }] : []),
-  ];
-
   return (
     <div className="bg-[#e0f7f7] min-h-screen pb-4">
-      <PageHeader title="จัดการโปรไฟล์" />
+      <PageHeader title="จัดการโปรไฟล์" profile={false} />
 
       <div className="p-4 space-y-4">
         <Notice type={message.type}>{message.text}</Notice>
 
-        <div className="bg-white p-5 rounded-3xl shadow-sm space-y-4">
-          <div className="flex justify-center pt-1">
+        <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
+          <div className="h-24 bg-gradient-to-br from-[#9bdadd] via-cyan-200 to-sky-300" aria-hidden="true" />
+          <div className="px-5 pb-5 space-y-4">
+          <div className="-mt-12 flex justify-center relative z-10">
             <ImageUploader kind="avatar" shape="avatar" value={me.avatarUrl} name={me.name} onChange={saveAvatar} hint="JPEG / PNG / WebP — ระบบย่อรูปให้อัตโนมัติ" />
           </div>
           <div className="flex items-center justify-between border-b pb-3">
@@ -188,17 +165,7 @@ export default function ProfilePage() {
               </div>
             </div>
           )}
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm divide-y">
-          {menu.map(({ href, icon: Icon, label, badge }) => (
-            <Link key={href} href={href} className="flex items-center gap-3 p-4 text-xs font-bold text-slate-700 hover:bg-slate-50">
-              <Icon size={18} className="text-cyan-600" />
-              <span className="flex-1">{label}</span>
-              {badge > 0 && <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center" aria-label={`มีงานค้าง ${badge} รายการ`}>{badge}</span>}
-              <ChevronRight size={16} className="text-slate-400" />
-            </Link>
-          ))}
+          </div>
         </div>
 
         {!isAdmin && (

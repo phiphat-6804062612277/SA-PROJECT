@@ -71,7 +71,7 @@ export default function OrderHistoryPage() {
 
   return (
     <div className="bg-[#e0f7f7] min-h-screen">
-      <PageHeader title="สถานะคำสั่งซื้อ" back />
+      <PageHeader title="คำสั่งซื้อของฉัน" />
 
       <div className="p-4 space-y-4">
         <div className="flex justify-center border-b border-cyan-300 text-sm font-semibold" role="tablist">

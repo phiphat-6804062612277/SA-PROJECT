@@ -9,6 +9,7 @@ import ProductImage from '@/components/ProductImage';
 import Avatar from '@/components/Avatar';
 import ChatMessages from '@/components/chat/ChatMessages';
 import Composer from '@/components/chat/Composer';
+import { ClosedBanner, StatusPill } from '@/components/chat/ChatStatus';
 
 export const DISPUTE_STATUS = {
   PENDING: { label: 'รอ Admin พิจารณา', cls: 'bg-amber-100 text-amber-700' },
@@ -144,9 +145,19 @@ export default function DisputeView({ dispute: d, role, onChanged }) {
       </Card>
 
       <Card title="ข้อความระหว่างคู่กรณี">
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-          <MessageSquare size={13} /> ผู้ซื้อ ผู้ขาย และ Admin ส่งข้อความได้จนกว่าจะตัดสิน
+        {/* Header สถานะแชต: เปิดอยู่จนกว่า Admin จะตัดสิน — ตัดสินแล้วปิดอัตโนมัติ (ไม่มีปุ่มปิดเอง) */}
+        <div className="flex items-center gap-2">
+          <StatusPill status={d.chatStatus || (pending ? 'OPEN' : 'CLOSED')} />
+          <span className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-slate-400">
+            <MessageSquare size={13} className="shrink-0" />
+            <span className="truncate">{pending ? 'ผู้ซื้อ ผู้ขาย และ Admin ส่งข้อความได้จนกว่าจะตัดสิน' : 'อ่านได้อย่างเดียว'}</span>
+          </span>
         </div>
+        {!pending && (
+          <ClosedBanner>
+            <p>Admin ตัดสินข้อพิพาทแล้ว ระบบปิดแชตนี้ให้อัตโนมัติ · ส่งข้อความและไฟล์เพิ่มไม่ได้{d.chatClosedAt ? ` (ปิดเมื่อ ${fmt(d.chatClosedAt)})` : ''}</p>
+          </ClosedBanner>
+        )}
         <div className="-mx-4 -mb-4 mt-1 rounded-b-2xl overflow-hidden border-t">
           <ChatMessages
             messages={messages}
@@ -159,7 +170,7 @@ export default function DisputeView({ dispute: d, role, onChanged }) {
             onSend={send}
             upload={upload}
             disabled={!pending}
-            disabledText="ข้อพิพาทนี้ตัดสินแล้ว ปิดการส่งข้อความ"
+            disabledText="การสนทนานี้ถูกปิดแล้ว — ข้อพิพาทตัดสินแล้ว อ่านได้อย่างเดียว"
             maxLength={LIMITS.DISPUTE_MESSAGE}
             placeholder="พิมพ์ข้อความถึงคู่กรณี / Admin"
           />

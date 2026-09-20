@@ -64,7 +64,7 @@ router.get('/conversations', async (req, res) => {
 
   const convs = await Conversation.find(filter).sort({ lastMessageAt: -1 }).limit(100);
   const people = await loadPeople(convs.flatMap((c) => [c.ownerId, c.peerId]));
-  const out = { conversations: convs.map((c) => conversationView(c, sideOf(c, me), people)) };
+  const out = { conversations: convs.map((c) => conversationView(c, sideOf(c, me), people, me.id)) };
 
   if (me.role === 'admin') {
     const base = { type: 'SUPPORT', messageCount: { $gt: 0 } };
@@ -216,7 +216,7 @@ router.get('/conversations/:id', async (req, res) => {
 
   const people = await loadPeople([conv.ownerId, conv.peerId, ...rows.map((m) => m.senderId)]);
   res.json({
-    conversation: conversationView(conv, side, people),
+    conversation: conversationView(conv, side, people, req.user.id),
     messages: rows.map((m) => messageView(m, conv, side, people)),
     hasMore,
   });
@@ -275,7 +275,6 @@ router.post('/conversations/:id/messages', async (req, res) => {
   };
   if (conv.type === 'SUPPORT' && fromOwner) {
     const owner = people.get(String(conv.ownerId));
-    if (conv.status !== 'OPEN') set.status = 'OPEN'; // ผู้ใช้ส่งข้อความใหม่ = เปิดเรื่องอีกครั้ง
     if (owner && (owner.isBanned || owner.storeBanned) && conv.topic !== 'APPEAL') set.topic = 'APPEAL';
   }
   await Conversation.updateOne(
@@ -286,15 +285,29 @@ router.post('/conversations/:id/messages', async (req, res) => {
   res.status(201).json({ message: messageView(message, conv, side, people) });
 });
 
-// Admin เปิด/ปิดเรื่องในห้องซัพพอร์ต
-router.put('/conversations/:id/status', auth.requireRole('admin'), async (req, res) => {
+// ---------------------------------------------------------------------------
+// ปิด/เปิดห้องสนทนา: { status: 'CLOSED' | 'OPEN' } — สมาชิกในห้องทำได้ทุกคน (ผู้ซื้อ/ผู้ขาย/Admin ในห้องซัพพอร์ต)
+//   CLOSED = อ่านได้อย่างเดียว (ส่งข้อความ/ไฟล์ไม่ได้) จนกว่าจะเปิดใหม่ · ปิดซ้ำจะไม่ทับข้อมูลว่าใครปิดคนแรก
+//   แชตข้อพิพาทไม่ผ่านเส้นทางนี้ — ปิดอัตโนมัติเมื่อ Admin ตัดสิน
+// ---------------------------------------------------------------------------
+router.put('/conversations/:id/status', async (req, res) => {
   const status = String(req.body?.status || '');
   if (!['OPEN', 'CLOSED'].includes(status)) return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
   const got = await getConversation(req.user, req.params.id);
   if (got.fail) return respondFail(res, got.fail);
-  const updated = await Conversation.findByIdAndUpdate(got.conv._id, { status }, { new: true });
-  const people = await loadPeople([updated.ownerId]);
-  res.json({ conversation: conversationView(updated, 'admin', people) });
+  const { conv, side } = got;
+
+  if (status === 'CLOSED') {
+    await Conversation.updateOne(
+      { _id: conv._id, status: { $ne: 'CLOSED' } },
+      { $set: { status: 'CLOSED', closedAt: new Date(), closedById: req.user.id, closedBySide: side, closedByRole: normalizeRole(req.user.role) } }
+    );
+  } else {
+    await Conversation.updateOne({ _id: conv._id }, { $set: { status: 'OPEN', closedAt: null, closedById: null, closedBySide: null, closedByRole: null } });
+  }
+  const updated = await Conversation.findById(conv._id);
+  const people = await loadPeople([updated.ownerId, updated.peerId]);
+  res.json({ conversation: conversationView(updated, side, people, req.user.id) });
 });
 
 // ---------------------------------------------------------------------------

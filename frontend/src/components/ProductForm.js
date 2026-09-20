@@ -53,7 +53,7 @@ export default function ProductForm({ product }) {
       if (product) await API.put(`/products/${product._id}`, payload);
       else await API.post('/products', payload);
       toast.success(product ? 'บันทึกการแก้ไขแล้ว' : 'ลงขายสินค้าเรียบร้อย');
-      router.replace('/seller?tab=products');
+      router.replace('/seller/products');
     } catch (err) {
       setError(errorMessage(err));
       setSaving(false);

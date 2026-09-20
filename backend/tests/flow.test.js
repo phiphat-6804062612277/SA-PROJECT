@@ -1415,7 +1415,7 @@ test('notifications: buyer=confirm receipt, seller=ship + disputes, admin=pendin
   const sn = await notes(seller);
   assert.equal(sn.total, 1);
   assert.equal(sn.items[0].key, 'seller_ship');
-  assert.equal(sn.items[0].href, '/seller?tab=orders&filter=todo');
+  assert.equal(sn.items[0].href, '/seller/orders?filter=todo');
   assert.equal(sn.items[0].entries.length, 1);
   assert.equal((await notes(buyer)).total, 0); // ยังไม่ส่ง → ผู้ซื้อไม่มีงาน
 
