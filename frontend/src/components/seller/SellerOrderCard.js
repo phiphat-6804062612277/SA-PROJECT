@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, Lock, Scale } from 'lucide-react';
+import { ChevronDown, ChevronUp, Lock, Scale, MessageCircle } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { baht } from '@/lib/auth';
 import ProductImage from '@/components/ProductImage';
@@ -105,6 +105,9 @@ export default function SellerOrderCard({ order: o, onChanged }) {
               </div>
               {(o.shippingPhone || o.buyerId?.phone) && <p>โทร {o.shippingPhone || o.buyerId?.phone}</p>}
               <p className="text-wrap-safe">{o.shippingAddress}</p>
+              <Link href={`/chat/new?orderId=${o._id}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-700 bg-white hover:bg-cyan-50 border border-cyan-200 rounded-full px-3 py-1.5 mt-1">
+                <MessageCircle size={12} /> แชตกับผู้ซื้อ
+              </Link>
             </div>
 
             {o.trackingNumber && (

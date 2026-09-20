@@ -71,6 +71,22 @@ Backend ตรวจ **ไฟล์จริงจาก magic bytes** (รั�
 และเสิร์ฟที่ `GET /api/images/:id` (แคชยาว + `nosniff`) · ฟิลด์ที่อ้างถึงรูป (`avatarUrl`, `storeLogoUrl`, `storeBannerUrl`, `Review.images`) ยอมรับเฉพาะรูปที่ **เจ้าของบัญชีอัปโหลดเองและตรงชนิด**
 ส่วนรูปเก่าที่ถูกแทนที่/ลบจะถูกลบออกจากฐานข้อมูลให้อัตโนมัติ (ยกเว้นรูปรีวิว) และ Worker `jobs/imageCleanup.js` (ทุก 6 ชั่วโมง) จะลบรูปที่อัปโหลดแล้วไม่ถูกใช้งานเกิน 24 ชั่วโมง (เช่น กดยกเลิกหลังเลือกรูป)
 
+**ระบบแชต 3 ฝ่าย + ไฟล์แนบ + ช่องทางติดต่อ Admin (ไม่ใช้แพ็กเกจเพิ่ม)**
+- **Buyer ↔ Store/Seller** — ปุ่ม "แชตกับร้านค้า" ที่หน้าสินค้า/หน้าร้าน (ผูกสินค้าที่สอบถามไว้บนหัวห้อง) และ "แชตกับร้าน / แชตกับผู้ซื้อ" ที่การ์ดออเดอร์ (ผูกออเดอร์) — ห้องละ 1 คู่ (`Conversation` type `DIRECT`)
+- **Buyer/Seller ↔ Admin** — "ติดต่อ Admin" จากเมนูโปรไฟล์/หน้า `/chat` (`type = SUPPORT`, `topic = HELP`) ทีม Admin เห็นทุกห้องซัพพอร์ตในกล่องข้อความ `/chat` (กรอง ยังไม่อ่าน / ยื่นอุทธรณ์ / เปิดอยู่ / ปิดแล้ว, ปิด-เปิดเรื่อง, ปลดแบนบัญชี/ร้านจากในห้อง) และเริ่มคุยกับผู้ใช้จากหน้า `/admin` ได้
+- **ระบบอุทธรณ์ผู้ใช้ที่ถูกแบน** — บัญชีที่ถูกแบนล็อกอินตามปกติไม่ได้ แต่ Login ด้วยรหัสผ่านที่ถูกต้องจะได้ `403 { code: 'BANNED', banReason, appealToken }` (โทเคนอุทธรณ์อายุ 12 ชม. ใช้ได้กับ `/api/chat/*` เท่านั้น
+  และใช้ได้เฉพาะตอนที่ยังถูกแบนอยู่) แล้วหน้า `/suspended` จะแสดงเหตุผล + ปุ่ม **"ติดต่อ Admin / ยื่นเรื่องอุทธรณ์"** เปิดแชตกับ Admin ได้ทันที ส่วนฟังก์ชันอื่นถูกบล็อกทั้งหมด
+  (ถูกแบนระหว่างใช้งานอยู่ก็ถูกพามาหน้านี้เช่นกัน) ห้องที่เปิดตอนถูกแบน/ร้านถูกระงับจะติดป้าย **ยื่นอุทธรณ์** ให้ Admin กรองดูได้ · ผู้ที่ถูกแบนเห็นและส่งข้อความได้เฉพาะห้องซัพพอร์ตของตัวเอง
+- **ไฟล์แนบในทุกแชต** (แชตซื้อขาย / ติดต่อ Admin / แชตข้อพิพาท ใช้คอมโพเนนต์ชุดเดียวกัน: `components/chat/*`) — ปุ่มคลิปหนีบข้างช่องพิมพ์ (วางรูปจากคลิปบอร์ดได้)
+  รูป `.jpg .png .webp` (ย่อด้วย `<canvas>` ≤ 700 KB ก่อนส่ง) และเอกสาร `pdf txt csv doc docx xls xlsx ppt pptx` ≤ 1 MB — เลือกแล้วอัปโหลดทันทีและมี Preview ก่อนกดส่ง ·
+  ในห้องแชตรูปแสดงเป็นภาพย่อ กดเพื่อเปิดดูภาพใหญ่ (Lightbox เลื่อนดูรูปอื่น/ดาวน์โหลดได้) ส่วนเอกสารเป็นการ์ดชื่อไฟล์/ขนาด มีปุ่ม "เปิดดู" (PDF/TXT/CSV) และ "ดาวน์โหลด"
+- **ความปลอดภัยของไฟล์แนบ** — ส่งเป็น data URL ไป `POST /api/chat/attachments` (body 2 MB เฉพาะเส้นทางนี้) ตรวจ **ชนิดจริงจาก magic bytes + นามสกุล** (PDF, ZIP สำหรับ OOXML, OLE สำหรับ Office เก่า, ข้อความล้วนห้ามมี NUL),
+  จำกัด 60 ไฟล์/วัน/บัญชี, ไฟล์เป็น **ส่วนตัว** (ดึงผ่าน `GET /api/chat/files/:id` ต้องมี Authorization และเป็นสมาชิกห้องเท่านั้น ส่ง `nosniff` + `CSP sandbox`) และไฟล์ที่อัปโหลดแล้วไม่ถูกส่งเกิน 24 ชม. จะถูก `jobs/imageCleanup.js` ลบ
+- **โครงสร้างข้อมูล** — `Message`: `senderId`, `receiverId` (`null` = ทีม Admin), `conversationId`, `messageType` (`TEXT | IMAGE | FILE`), `text`, `fileUrl`, `fileName/fileMime/fileSize`, `isSupportChat` ·
+  `Conversation`: `ownerId`, `peerId`, `type`, `topic`, `status`, ตัวนับข้อความใหม่ของแต่ละฝ่าย · ข้อความในข้อพิพาท (`Dispute.messages`) มีฟิลด์ไฟล์แนบชุดเดียวกัน
+- **อื่นๆ** — ดึงข้อความใหม่ทุก 4 วินาที (`?after=<id>` เฉพาะที่ใหม่กว่า, แท็บที่ซ่อนอยู่จะพัก) และโหลดข้อความเก่าด้วย `?before=<id>` · จำกัด 8 ข้อความ/10 วินาที/บัญชี · ข้อความยาว ≤ 1,000 ตัวอักษร ·
+  ข้อความที่ยังไม่อ่านขึ้น Badge ที่ไอคอนโปรไฟล์ (`GET /api/notifications` มีรายการ `chat_unread`)
+
 **Validation / ความปลอดภัย**
 - ราคาสินค้า ≤ 10,000,000 บาท (ทศนิยมไม่เกิน 2 ตำแหน่ง), สต็อก ≤ 100,000 ชิ้น — สินค้าเก่าที่ราคาเกินเพดาน (ข้อมูลผิดปกติ)
   จะถูกซ่อนจากตลาดจนกว่าผู้ขายจะแก้ราคา และตัวเลขยาวๆ จะตัดบรรทัดเอง (class `.money`) ไม่ดันการ์ดสินค้าทะลุจอ
@@ -92,7 +108,9 @@ Backend ตรวจ **ไฟล์จริงจาก magic bytes** (รั�
 | Home (แบนเนอร์ + ร้านรีวิวดี + สินค้ายอดนิยม + สินค้า) · ค้นหา · รายละเอียดสินค้า · หน้าร้านค้า | `/` · `/shopping` · `/product/[id]` · `/store/[id]` |
 | ตะกร้า · ชำระเงิน · ประวัติคำสั่งซื้อ · โปรไฟล์ · Wallet | `/cart` · `/checkout` · `/history` · `/profile` · `/wallet` |
 | Seller Dashboard (`?tab=orders&filter=todo`) · ตั้งค่าร้าน (โลโก้/แบนเนอร์) · เพิ่ม/แก้ไขสินค้า | `/seller` · `/seller/store` · `/seller/products/new` · `/seller/products/[id]` |
-| ข้อพิพาท (ผู้ซื้อ/ผู้ขาย: ดูรายละเอียด + แชต) | `/disputes/[id]` |
+| ข้อพิพาท (ผู้ซื้อ/ผู้ขาย: ดูรายละเอียด + แชต + แนบไฟล์) | `/disputes/[id]` |
+| กล่องข้อความ · ห้องสนทนา · เริ่มแชต (`?sellerId=&productId=` / `?orderId=` / `?support=1` / `?userId=` สำหรับ Admin) | `/chat` · `/chat/[id]` · `/chat/new` |
+| หน้าบัญชีถูกระงับ + ติดต่อ Admin / ยื่นอุทธรณ์ | `/suspended` |
 | Admin · จัดการข้อพิพาท · พิจารณาข้อพิพาท | `/admin` · `/admin/disputes` · `/admin/disputes/[id]` |
 
 ## รันในเครื่อง
@@ -201,11 +219,11 @@ Dispute Resolution Panel ของ Admin (สิทธิ์, กรอง/ค�
 
 ```
 backend/   app.js (Express app) · server.js (เชื่อม DB + listen) · config.js
-           routes/ auth · products · cart · wallet · orders · store · reviews · disputes · admin
+           routes/ auth · products · cart · wallet · orders · store · reviews · disputes · admin · chat
            jobs/ autoRelease.js (Worker ปล่อยเงินอัตโนมัติ + กู้คืนรายการเงินค้าง)
            models/ (… Order · Dispute · Transaction …) · middleware/ · tests/
-           utils/ (phone, ratings, mailer, wallet, escrow, disputes, helpers)
-frontend/  src/app (หน้าเว็บ) · src/components · src/lib (api, auth, useAuth, limits, phone)
+           utils/ (phone, ratings, mailer, wallet, escrow, disputes, helpers, chat, attachments)
+frontend/  src/app (หน้าเว็บ) · src/components · src/components/chat (ChatRoom, ChatMessages, Composer, ChatAttachment) · src/lib (api, auth, useAuth, limits, phone, chat)
 ```
 
 | Method | Path | สิทธิ์ | หน้าที่ |
@@ -231,9 +249,17 @@ frontend/  src/app (หน้าเว็บ) · src/components · src/lib (api,
 | PUT | `/api/orders/:id/cancel` | buyer/seller | ยกเลิกก่อนจัดส่ง → คืนเงิน |
 | POST | `/api/disputes` | buyer | เปิดข้อพิพาท (`orderId`, `reason`, `evidenceImages[]`) — ได้เฉพาะ `SHIPPED` → `DISPUTED` |
 | GET | `/api/disputes/:id` | ผู้ซื้อ/ผู้ขายของออเดอร์ หรือ admin | รายละเอียดข้อพิพาท + ไทม์ไลน์ + แชต |
-| POST | `/api/disputes/:id/messages` | ผู้ซื้อ/ผู้ขาย/admin | ส่งข้อความ (ก่อนตัดสินเท่านั้น) |
+| POST | `/api/disputes/:id/messages` | ผู้ซื้อ/ผู้ขาย/admin | ส่งข้อความ/ไฟล์แนบ `{ text?, fileUrl? }` (ก่อนตัดสินเท่านั้น) |
 | POST | `/api/reviews` | buyer/seller | รีวิว/ให้ดาว (ได้เมื่อออเดอร์เสร็จสิ้น, ฝั่งละ 1 ครั้งต่อออเดอร์) — ผู้ซื้อแนบ `images[]` ได้ ≤ 4 รูป |
 | GET | `/api/reviews/product/:id` `/seller/:id` `/received` | – / ล็อกอิน | รีวิวของสินค้า / ผู้ขาย (`?rating=&withImages=1&page=` + สรุปดาว + แกลเลอรีรูป) / ที่ฉันได้รับ |
+| GET | `/api/chat/conversations` | ล็อกอิน (รวมผู้ถูกแบน) | รายการห้องของฉัน (Admin: ห้องซัพพอร์ตทั้งหมด `?unread=1&status=&topic=` + `counts`) |
+| POST | `/api/chat/conversations` | buyer/seller | เปิด/หาห้องแชตซื้อขาย `{ sellerId, productId? }` หรือ `{ orderId }` → `{ id }` |
+| POST | `/api/chat/support` | ล็อกอิน (รวมผู้ถูกแบน) | เปิด/หาห้องติดต่อ Admin (Admin ส่ง `{ userId }`) — ผู้ถูกแบน/ร้านถูกระงับ = `APPEAL` |
+| GET | `/api/chat/conversations/:id` | สมาชิกห้อง / admin | ข้อความ (`?before=` `?after=`) — เปิดอ่านแล้วล้างตัวนับข้อความใหม่ |
+| POST | `/api/chat/conversations/:id/messages` | สมาชิกห้อง / admin | ส่งข้อความ `{ text?, fileUrl? }` (อย่างน้อย 1 อย่าง) |
+| PUT | `/api/chat/conversations/:id/status` | admin | ปิด/เปิดเรื่องซัพพอร์ต `{ status: OPEN\|CLOSED }` |
+| POST | `/api/chat/attachments` | ล็อกอิน | อัปโหลดไฟล์แนบ `{ scope: conversation\|dispute, scopeId, fileName, dataUrl }` → `{ url, name, mime, size, kind }` |
+| GET | `/api/chat/files/:id` | สมาชิกห้อง / คู่กรณีข้อพิพาท / admin | ดาวน์โหลด/แสดงไฟล์แนบ (ส่วนตัว ต้องมี Authorization) |
 | GET | `/api/wallet` | buyer/seller (admin ไม่มี Wallet → 403) | ยอดคงเหลือ + ประวัติ |
 | POST | `/api/wallet/topup` | buyer | เติมเงิน (ไม่เกิน 100,000/ครั้ง) — ผู้ขายถูกปฏิเสธ (403) |
 | POST | `/api/wallet/withdraw` | seller | ถอนเงิน (จำลอง) |
@@ -248,12 +274,13 @@ frontend/  src/app (หน้าเว็บ) · src/components · src/lib (api,
 \* Admin สมัครได้เมื่อกรอกรหัส `ADMIN_SIGNUP_CODE` ถูกต้องเท่านั้น
 
 ### ความหมายของ "แบน"
-- **แบนบัญชี** — ล็อกอิน/เรียก API ไม่ได้ทันที (ได้รับ `403 BANNED`) และสินค้าของบัญชีนั้นถูกซ่อนจากตลาด
+- **แบนบัญชี** — ล็อกอิน/เรียก API ไม่ได้ทันที (ได้รับ `403 BANNED`) และสินค้าของบัญชีนั้นถูกซ่อนจากตลาด — ยกเว้นช่องทางเดียวคือ **แชตติดต่อ Admin / ยื่นอุทธรณ์** (`/suspended` → `/api/chat/*`)
 - **แบนร้านค้า** — สินค้าของร้านถูกซ่อน/ซื้อไม่ได้ และผู้ขายลงสินค้าใหม่ไม่ได้ แต่ยังล็อกอิน จัดส่งออเดอร์ที่ค้าง และถอนเงินได้
 - แบน Admin ด้วยกันเองไม่ได้ และปลดแบนแล้วสินค้ากลับมาแสดงตามเดิม
 
 ## หมายเหตุ
 
+- ไฟล์แนบในแชตเก็บเป็น Buffer ใน MongoDB (collection `attachments`) เหมือนรูปอัปโหลด — เหมาะกับ Demo, งานจริงควรย้ายไป Object Storage · แชตใช้การดึงข้อมูลทุก 4 วินาที (ไม่ใช่ WebSocket) จึงไม่ต้องติดตั้งแพ็กเกจหรือเปิดพอร์ตเพิ่ม
 - ผู้ใช้เก่าที่สมัครไว้ก่อนมีการแยกบทบาท (role `user`) จะถูกมองเป็นผู้ซื้อโดยอัตโนมัติ
 - รูปสินค้าและรูปหลักฐานข้อพิพาทยังใช้การวางลิงก์ URL — ระบบอัปโหลดรูปรองรับเฉพาะรูปโปรไฟล์ โลโก้/แบนเนอร์ร้าน และรูปรีวิว
 - รูปที่อัปโหลดเก็บในฐานข้อมูล MongoDB (เหมาะกับ Demo/ปริมาณน้อย) — ถ้าใช้งานจริงปริมาณมากควรย้ายไปเก็บที่ Object Storage (S3/Cloudinary) แล้วเก็บเฉพาะ URL

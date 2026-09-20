@@ -4,7 +4,13 @@ const MessageSchema = new mongoose.Schema(
   {
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     senderRole: { type: String, enum: ['buyer', 'seller', 'admin'], required: true },
-    text: { type: String, required: true, trim: true, maxlength: 500 },
+    text: { type: String, default: '', trim: true, maxlength: 500 }, // ว่างได้ถ้าแนบไฟล์ (route ตรวจว่ามีข้อความหรือไฟล์อย่างน้อยหนึ่งอย่าง)
+    // ไฟล์แนบ (รูป/เอกสาร) — ใช้ระบบเดียวกับแชตทั่วไป (models/Attachment.js)
+    messageType: { type: String, enum: ['TEXT', 'IMAGE', 'FILE'], default: 'TEXT' },
+    fileUrl: { type: String, default: '' },
+    fileName: { type: String, default: '' },
+    fileMime: { type: String, default: '' },
+    fileSize: { type: Number, default: 0 },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Search, Ban, ShieldCheck, Trash2, Store, Users, Package, ExternalLink, Scale, ChevronRight } from 'lucide-react';
+import { Search, Ban, ShieldCheck, Trash2, Store, Users, Package, ExternalLink, Scale, ChevronRight, MessageCircle } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { baht } from '@/lib/auth';
 import { useAuth } from '@/lib/useAuth';
@@ -12,6 +12,7 @@ import ProductImage from '@/components/ProductImage';
 import Avatar from '@/components/Avatar';
 import ReasonDialog from '@/components/ReasonDialog';
 import { useToast } from '@/components/Toast';
+import { useNotifications } from '@/components/NotificationProvider';
 
 const TABS = [
   { key: 'users', label: 'ผู้ใช้', icon: Users },
@@ -39,6 +40,8 @@ const Stat = ({ label, value, tone }) => (
 // แดชบอร์ดผู้ดูแลระบบ: ลบสินค้า / แบนผู้ซื้อ-ผู้ขาย / แบนร้านค้า
 export default function AdminPage() {
   const { user } = useAuth({ roles: ['admin'] });
+  const { items: taskItems } = useNotifications();
+  const chatUnread = taskItems.find((t) => t.key === 'chat_unread')?.count || 0;
   const toast = useToast();
   const [tab, setTab] = useState('users');
   const [stats, setStats] = useState(null);
@@ -134,6 +137,20 @@ export default function AdminPage() {
           {stats?.pendingDisputes > 0 && (
             <span className="bg-amber-500 text-white text-xs font-black rounded-full min-w-6 h-6 px-2 flex items-center justify-center">{stats.pendingDisputes}</span>
           )}
+          <ChevronRight size={18} className="text-slate-300 shrink-0" />
+        </Link>
+
+        <Link href="/chat" className={`flex items-center gap-3 rounded-2xl p-3 shadow-sm ${chatUnread ? 'bg-cyan-50 ring-2 ring-cyan-300' : 'bg-white'}`}>
+          <span className="w-10 h-10 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center shrink-0">
+            <MessageCircle size={20} />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-bold text-slate-900">กล่องข้อความ / คำขออุทธรณ์</span>
+            <span className="block text-[11px] text-slate-500">
+              {chatUnread ? `มี ${chatUnread} ห้องสนทนาที่ยังไม่ได้อ่าน` : 'ตอบผู้ใช้ที่ติดต่อ Admin และพิจารณาคำขอปลดระงับ'}
+            </span>
+          </span>
+          {chatUnread > 0 && <span className="bg-red-500 text-white text-xs font-black rounded-full min-w-6 h-6 px-2 flex items-center justify-center">{chatUnread}</span>}
           <ChevronRight size={18} className="text-slate-300 shrink-0" />
         </Link>
 
@@ -259,6 +276,9 @@ export default function AdminPage() {
                   ) : (
                     <button disabled={busy} onClick={() => setDialog({ kind: 'store', target: u })} className="flex-1 bg-red-50 text-red-600 border border-red-200 font-bold py-1.5 rounded-full text-xs disabled:opacity-40">แบนร้านค้า</button>
                   )}
+                  <Link href={`/chat/new?userId=${u.id}`} aria-label={`แชตกับ ${u.storeName || u.name}`} className="shrink-0 inline-flex items-center gap-1 bg-cyan-50 text-cyan-700 border border-cyan-200 font-bold px-3 py-1.5 rounded-full text-xs">
+                    <MessageCircle size={12} /> แชต
+                  </Link>
                 </div>
               </div>
             ))}
@@ -297,6 +317,9 @@ export default function AdminPage() {
                     ) : (
                       <button disabled={busy} onClick={() => setDialog({ kind: 'store', target: u })} className="flex-1 bg-white text-slate-700 border border-slate-300 font-bold py-1.5 rounded-full text-xs disabled:opacity-40">แบนร้านค้า</button>
                     ))}
+                  <Link href={`/chat/new?userId=${u.id}`} aria-label={`แชตกับ ${u.name}`} className="shrink-0 inline-flex items-center gap-1 bg-cyan-50 text-cyan-700 border border-cyan-200 font-bold px-3 py-1.5 rounded-full text-xs">
+                    <MessageCircle size={12} /> แชต
+                  </Link>
                 </div>
               </div>
             ))}

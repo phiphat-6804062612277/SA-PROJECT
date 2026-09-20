@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { requireRole } = auth;
 const { isValidId, LIMITS } = require('../utils/helpers');
 const { buildDetail } = require('../utils/disputes');
+const { claimAttachment, releaseAttachment, attachmentFields } = require('../utils/attachments');
 
 const router = express.Router();
 router.use(auth);
@@ -129,12 +130,14 @@ router.get('/:id', async (req, res) => {
 });
 
 // ส่งข้อความในข้อพิพาท (ผู้ซื้อ / ผู้ขาย / Admin) — ทำได้เฉพาะขณะยังไม่ตัดสิน
+// body: { text?, fileUrl? } — แนบรูป/เอกสารได้ (อัปโหลดก่อนที่ POST /api/chat/attachments ด้วย scope = 'dispute')
 router.post('/:id/messages', async (req, res) => {
   const dispute = await loadAccessible(req, res);
   if (!dispute) return;
 
   const text = String(req.body?.text || '').trim();
-  if (!text) return res.status(400).json({ message: 'กรุณาพิมพ์ข้อความ' });
+  const url = String(req.body?.fileUrl || '').trim();
+  if (!text && !url) return res.status(400).json({ message: 'กรุณาพิมพ์ข้อความหรือแนบไฟล์' });
   if (text.length > LIMITS.DISPUTE_MESSAGE) {
     return res.status(400).json({ message: `ข้อความต้องไม่เกิน ${LIMITS.DISPUTE_MESSAGE} ตัวอักษร` });
   }
@@ -142,12 +145,20 @@ router.post('/:id/messages', async (req, res) => {
   if (dispute.status === 'PENDING' && dispute.messages.length >= MAX_MESSAGES) {
     return res.status(400).json({ message: 'ข้อความในข้อพิพาทนี้เต็มแล้ว' });
   }
+
+  let att = null;
+  if (url) {
+    att = await claimAttachment(url, { ownerId: req.user.id, scopeType: 'DISPUTE', scopeId: dispute._id });
+    if (!att) return res.status(400).json({ message: 'ไฟล์แนบไม่ถูกต้องหรือถูกใช้ไปแล้ว กรุณาแนบไฟล์ใหม่อีกครั้ง' });
+  }
+
   const updated = await Dispute.findOneAndUpdate(
     { _id: dispute._id, status: 'PENDING' },
-    { $push: { messages: { senderId: req.user.id, senderRole: req.user.role, text } } },
+    { $push: { messages: { senderId: req.user.id, senderRole: req.user.role, text, ...(att ? attachmentFields(att) : {}) } } },
     { new: true }
   );
   if (!updated) {
+    if (att) await releaseAttachment(att._id);
     return res.status(400).json({ message: 'ข้อพิพาทนี้ตัดสินแล้ว ไม่สามารถส่งข้อความเพิ่มได้' });
   }
   res.status(201).json(await buildDetail(updated, { includeContact: req.user.role === 'admin' }));

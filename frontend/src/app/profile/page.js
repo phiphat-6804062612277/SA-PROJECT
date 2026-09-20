@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Phone, MapPin, Edit3, Save, LogOut, ClipboardList, Wallet, Store, ChevronRight, ShieldCheck, Settings, Scale } from 'lucide-react';
+import { Phone, MapPin, Edit3, Save, LogOut, ClipboardList, Wallet, Store, ChevronRight, ShieldCheck, Settings, Scale, MessageCircle } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { clearSession, updateStoredUser } from '@/lib/auth';
 import { validatePhone } from '@/lib/phone';
@@ -111,6 +111,8 @@ export default function ProfilePage() {
       : []),
     ...(!isSeller && !isAdmin ? [{ href: '/history', icon: ClipboardList, label: 'คำสั่งซื้อของฉัน', badge: pending('buyer_confirm') }] : []),
     ...(!isAdmin ? [{ href: '/wallet', icon: Wallet, label: 'Wallet และประวัติรายการ' }] : []),
+    { href: '/chat', icon: MessageCircle, label: isAdmin ? 'กล่องข้อความ / คำขออุทธรณ์' : 'ข้อความ (ร้านค้า / Admin)', badge: pending('chat_unread') },
+    ...(!isAdmin ? [{ href: '/chat/new?support=1', icon: ShieldCheck, label: 'ติดต่อ Admin' }] : []),
   ];
 
   return (

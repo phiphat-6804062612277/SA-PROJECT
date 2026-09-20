@@ -7,7 +7,7 @@ import { getStoredUser } from '@/lib/auth';
 import NotificationBadge from '@/components/NotificationBadge';
 import { useNotifications } from '@/components/NotificationProvider';
 
-const HIDE_ON = ['/welcome', '/login', '/register', '/forgot-password'];
+const HIDE_ON = ['/welcome', '/login', '/register', '/forgot-password', '/suspended'];
 
 export default function BottomNav() {
   const pathname = usePathname();

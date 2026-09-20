@@ -49,6 +49,31 @@ export function takeAuthNotice() {
   }
 }
 
+// เซสชันชั่วคราวของผู้ใช้ที่ "ถูกแบน" (เก็บใน sessionStorage) — ใช้ในหน้า /suspended เพื่อยื่นอุทธรณ์ผ่านแชตซัพพอร์ตเท่านั้น
+//   { token: appeal token หรือโทเคนเดิม, message: ข้อความแจ้งเตือน, reason: เหตุผลที่ถูกระงับ }
+const APPEAL_KEY = 'appealSession';
+export function setAppealSession({ token = '', message = '', reason = '' } = {}) {
+  try {
+    sessionStorage.setItem(APPEAL_KEY, JSON.stringify({ token, message, reason }));
+  } catch {
+    /* ignore */
+  }
+}
+export function getAppealSession() {
+  try {
+    return JSON.parse(sessionStorage.getItem(APPEAL_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+export function clearAppealSession() {
+  try {
+    sessionStorage.removeItem(APPEAL_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 // ป้องกัน open redirect: อนุญาตเฉพาะ path ภายในเว็บ เช่น /checkout
 export function safeNext(next, fallback) {
   return typeof next === 'string' && next.startsWith('/') && !next.startsWith('//') ? next : fallback;

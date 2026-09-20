@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { MessageCircle } from 'lucide-react';
 import API from '@/lib/api';
-import { baht } from '@/lib/auth';
+import { baht, getStoredUser } from '@/lib/auth';
 import PageHeader from '@/components/PageHeader';
 import ProductCard from '@/components/ProductCard';
 import ReviewSection from '@/components/ReviewSection';
@@ -25,6 +27,11 @@ export default function StorePage() {
   const [state, setState] = useState('loading'); // loading | ok | missing
   const [tab, setTab] = useState('products');
   const [sort, setSort] = useState('new');
+  const [viewerRole, setViewerRole] = useState('');
+
+  useEffect(() => {
+    setViewerRole(getStoredUser()?.role || 'guest');
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -79,6 +86,11 @@ export default function StorePage() {
             ))}
           </div>
           {store.description && <p className="text-xs text-slate-600 text-wrap-safe">{store.description}</p>}
+          {(viewerRole === 'buyer' || viewerRole === 'guest') && (
+            <Link href={`/chat/new?sellerId=${id}`} className="flex items-center justify-center gap-2 border border-cyan-300 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 text-xs font-bold py-2.5 rounded-full">
+              <MessageCircle size={16} /> แชตกับร้านค้า
+            </Link>
+          )}
         </StoreHero>
 
         <div className="flex border-b border-cyan-300 text-sm font-semibold" role="tablist">
