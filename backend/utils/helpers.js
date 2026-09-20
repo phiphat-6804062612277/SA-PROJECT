@@ -25,6 +25,8 @@ const LIMITS = {
   DISPUTE_NOTE: 1000,
   DISPUTE_MESSAGE: 500,
   DISPUTE_IMAGES: 5,
+  // แชต
+  CHAT_MESSAGE: 1000,
   TRACKING_MAX: 40,
 };
 
@@ -50,6 +52,7 @@ const serializeUser = (u) => ({
   storeBannerUrl: u.storeBannerUrl || '',
   avatarUrl: u.avatarUrl || '',
   storeBanned: !!u.storeBanned,
+  storeBanReason: u.storeBanned ? u.storeBanReason || '' : '',
 });
 
 // เลขพัสดุ: ตัดช่องว่าง/ขีดคั่นกลาง ทำเป็นตัวพิมพ์ใหญ่ (กัน "th123" กับ "TH 123" ถูกมองเป็นคนละเลข)

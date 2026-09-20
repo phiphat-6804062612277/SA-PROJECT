@@ -1,13 +1,14 @@
 'use client';
-import { useState } from 'react';
-import { Send, Truck, MessageSquare, ExternalLink } from 'lucide-react';
-import API, { errorMessage } from '@/lib/api';
+import { useMemo } from 'react';
+import { Truck, MessageSquare, ExternalLink } from 'lucide-react';
+import API from '@/lib/api';
 import { baht } from '@/lib/auth';
 import { LIMITS } from '@/lib/limits';
+import { uploadChatAttachment } from '@/lib/chat';
 import ProductImage from '@/components/ProductImage';
-import Notice from '@/components/Notice';
 import Avatar from '@/components/Avatar';
-import { useToast } from '@/components/Toast';
+import ChatMessages from '@/components/chat/ChatMessages';
+import Composer from '@/components/chat/Composer';
 
 export const DISPUTE_STATUS = {
   PENDING: { label: 'รอ Admin พิจารณา', cls: 'bg-amber-100 text-amber-700' },
@@ -35,34 +36,20 @@ const ROLE_STYLE = {
   seller: 'bg-amber-50 border-amber-100',
   admin: 'bg-violet-50 border-violet-100',
 };
-const ROLE_LABEL = { buyer: 'ผู้ซื้อ', seller: 'ผู้ขาย', admin: 'Admin' };
 
 // รายละเอียดข้อพิพาท (ใช้ร่วมกันระหว่างผู้ซื้อ / ผู้ขาย / Admin)
 //   role: 'buyer' | 'seller' | 'admin'   dispute: ข้อมูลจาก GET /disputes/:id หรือ /admin/disputes/:id
 export default function DisputeView({ dispute: d, role, onChanged }) {
-  const toast = useToast();
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState('');
   const pending = d.status === 'PENDING';
 
-  const send = async (e) => {
-    e.preventDefault();
-    const msg = text.trim();
-    if (!msg) return;
-    setSending(true);
-    setError('');
-    try {
-      await API.post(`/disputes/${d.id}/messages`, { text: msg });
-      setText('');
-      await onChanged();
-    } catch (err) {
-      setError(errorMessage(err));
-      toast.error(errorMessage(err));
-    } finally {
-      setSending(false);
-    }
+  // ข้อความข้อพิพาทใช้กล่องแชตกลางร่วมกับแชตซื้อขาย/ติดต่อ Admin (รองรับรูปและไฟล์แนบ)
+  const messages = useMemo(() => d.messages.map((m) => ({ ...m, mine: m.senderRole === role })), [d.messages, role]);
+
+  const send = async ({ text, fileUrl }) => {
+    await API.post(`/disputes/${d.id}/messages`, { text, fileUrl });
+    await onChanged();
   };
+  const upload = (file) => uploadChatAttachment(file, { scope: 'dispute', scopeId: d.id });
 
   return (
     <div className="space-y-3">
@@ -160,46 +147,23 @@ export default function DisputeView({ dispute: d, role, onChanged }) {
         <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
           <MessageSquare size={13} /> ผู้ซื้อ ผู้ขาย และ Admin ส่งข้อความได้จนกว่าจะตัดสิน
         </div>
-        {d.messages.length === 0 ? (
-          <p className="text-center text-[11px] text-slate-400 py-3">ยังไม่มีข้อความ</p>
-        ) : (
-          <ul className="space-y-2 max-h-72 overflow-y-auto">
-            {d.messages.map((m) => (
-              <li key={m.id} className={`flex items-start gap-1.5 ${m.senderRole === role ? 'flex-row-reverse ml-4' : 'mr-4'}`}>
-                <Avatar src={m.senderAvatarUrl} name={m.senderName} size={28} />
-                <div className={`flex-1 min-w-0 border rounded-xl p-2 ${ROLE_STYLE[m.senderRole]}`}>
-                  <p className="text-[10px] font-bold text-slate-500">
-                    {m.senderName} <span className="font-normal">({ROLE_LABEL[m.senderRole]}) · {fmt(m.createdAt)}</span>
-                  </p>
-                  <p className="text-xs text-slate-800 text-wrap-safe">{m.text}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {pending ? (
-          <form onSubmit={send} className="space-y-1.5 pt-1">
-            <Notice type="error">{error}</Notice>
-            <div className="flex gap-2 items-end">
-              <textarea
-                aria-label="พิมพ์ข้อความ"
-                rows={2}
-                value={text}
-                maxLength={LIMITS.DISPUTE_MESSAGE}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="พิมพ์ข้อความถึงคู่กรณี / Admin"
-                className="flex-1 p-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none focus:border-cyan-500 text-wrap-safe"
-              />
-              <button type="submit" disabled={sending || !text.trim()} aria-label="ส่งข้อความ" className="bg-[#9bdadd] hover:bg-cyan-300 text-slate-900 p-3 rounded-full disabled:opacity-40">
-                <Send size={16} />
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 text-right">{text.length}/{LIMITS.DISPUTE_MESSAGE}</p>
-          </form>
-        ) : (
-          <p className="text-[11px] text-slate-400 text-center pt-1">ข้อพิพาทนี้ตัดสินแล้ว ปิดการส่งข้อความ</p>
-        )}
+        <div className="-mx-4 -mb-4 mt-1 rounded-b-2xl overflow-hidden border-t">
+          <ChatMessages
+            messages={messages}
+            showSender
+            roleStyle={ROLE_STYLE}
+            emptyText="ยังไม่มีข้อความ"
+            className="bg-[#e0f7f7] px-3 py-3 max-h-96"
+          />
+          <Composer
+            onSend={send}
+            upload={upload}
+            disabled={!pending}
+            disabledText="ข้อพิพาทนี้ตัดสินแล้ว ปิดการส่งข้อความ"
+            maxLength={LIMITS.DISPUTE_MESSAGE}
+            placeholder="พิมพ์ข้อความถึงคู่กรณี / Admin"
+          />
+        </div>
       </Card>
     </div>
   );

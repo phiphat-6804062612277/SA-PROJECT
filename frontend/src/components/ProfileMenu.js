@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, ChevronRight, LogIn, LogOut, User as UserIcon, CheckCircle2 } from 'lucide-react';
+import { Bell, ChevronRight, LogIn, LogOut, User as UserIcon, CheckCircle2, MessageCircle } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import NotificationBadge from '@/components/NotificationBadge';
 import { useNotifications } from '@/components/NotificationProvider';
@@ -146,6 +146,14 @@ export default function ProfileMenu({ showLogin = false }) {
           </div>
 
           <div className="border-t p-1.5 grid grid-cols-2 gap-1">
+            <Link href="/chat" role="menuitem" onClick={close} className={`flex items-center justify-center gap-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl py-2 ${user.role === 'admin' ? 'col-span-2' : ''}`}>
+              <MessageCircle size={14} /> ข้อความ
+            </Link>
+            {user.role !== 'admin' && (
+              <Link href="/chat/new?support=1" role="menuitem" onClick={close} className="flex items-center justify-center gap-1.5 text-xs font-bold text-violet-700 hover:bg-violet-50 rounded-xl py-2">
+                ติดต่อ Admin
+              </Link>
+            )}
             <Link href="/profile" role="menuitem" onClick={close} className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl py-2">
               <UserIcon size={14} /> โปรไฟล์
             </Link>

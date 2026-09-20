@@ -1,13 +1,15 @@
 'use client';
 import { useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { imageSrc } from '@/lib/image';
 
 /**
  * ดูรูปขนาดใหญ่เต็มจอ (Lightbox) — เลื่อนซ้าย/ขวาด้วยปุ่มหรือลูกศรคีย์บอร์ด, Esc เพื่อปิด
  *   <ImageViewer images={[url,...]} index={i} onIndex={setI} onClose={() => setI(null)} />
+ *   names = ชื่อไฟล์ของแต่ละรูป (ไม่บังคับ) — ถ้าส่งมาจะมีปุ่มดาวน์โหลดรูปในหน้าดูรูป (ใช้ในแชต)
  */
-export default function ImageViewer({ images, index, onIndex, onClose }) {
+export default function ImageViewer({ images, index, onIndex, onClose, names }) {
   const total = images.length;
   const open = index !== null && index !== undefined && !!images[index];
 
@@ -24,7 +26,8 @@ export default function ImageViewer({ images, index, onIndex, onClose }) {
 
   if (!open) return null;
 
-  return (
+  // แสดงผ่าน Portal ที่ <body> — ไม่ให้ถูกบีบด้วย ancestor ที่มี transform/overflow (เช่นกล่องแชต) และอยู่เหนือ BottomNav เสมอ
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex justify-center" role="dialog" aria-modal="true" aria-label="ดูรูปภาพ">
       <div className="relative w-full max-w-md h-full bg-black/90 flex items-center justify-center">
         <button className="absolute inset-0 cursor-zoom-out" aria-label="ปิด" onClick={onClose} />
@@ -34,6 +37,19 @@ export default function ImageViewer({ images, index, onIndex, onClose }) {
         <button onClick={onClose} aria-label="ปิด" className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/30">
           <X size={20} />
         </button>
+        {names && (
+          <a
+            href={imageSrc(images[index])}
+            download={names[index] || 'image'}
+            aria-label="ดาวน์โหลดรูปนี้"
+            className="absolute top-3 right-14 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/30"
+          >
+            <Download size={18} />
+          </a>
+        )}
+        {names?.[index] && (
+          <span className="absolute bottom-4 inset-x-0 text-center text-white/80 text-[11px] px-12 truncate">{names[index]}</span>
+        )}
         {total > 1 && (
           <>
             <span className="absolute top-4 left-4 text-white/90 text-xs font-bold">
@@ -52,6 +68,7 @@ export default function ImageViewer({ images, index, onIndex, onClose }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

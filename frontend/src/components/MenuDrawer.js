@@ -3,15 +3,18 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { Menu, X, House, ShoppingBag, ClipboardList, Wallet, User, Store, ShieldCheck, LogIn, UserPlus, LogOut, ShoppingCart, Scale } from 'lucide-react';
+import { Menu, X, House, ShoppingBag, ClipboardList, Wallet, User, Store, ShieldCheck, LogIn, UserPlus, LogOut, ShoppingCart, Scale, MessageCircle } from 'lucide-react';
 import { clearSession, getStoredUser, hasToken } from '@/lib/auth';
 import Avatar from '@/components/Avatar';
+import { useNotifications } from '@/components/NotificationProvider';
 
 // เมนูแฮมเบอร์เกอร์ (ปุ่ม ☰ มุมซ้ายบน) เลื่อนออกมาจากด้านซ้าย เมนูเปลี่ยนตามบทบาทของผู้ใช้
 export default function MenuDrawer() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const { items: taskItems } = useNotifications();
+  const chatUnread = taskItems.find((t) => t.key === 'chat_unread')?.count || 0;
 
   useEffect(() => {
     setUser(hasToken() ? getStoredUser() : null);
@@ -37,6 +40,8 @@ export default function MenuDrawer() {
         ]
       : []),
     ...(user && role !== 'admin' ? [{ href: '/wallet', icon: Wallet, label: 'Wallet' }] : []),
+    ...(user ? [{ href: '/chat', icon: MessageCircle, label: 'ข้อความ', badge: chatUnread }] : []),
+    ...(user && role !== 'admin' ? [{ href: '/chat/new?support=1', icon: ShieldCheck, label: 'ติดต่อ Admin' }] : []),
     ...(user ? [{ href: '/profile', icon: User, label: 'โปรไฟล์' }] : []),
   ];
 
@@ -72,9 +77,10 @@ export default function MenuDrawer() {
               </div>
 
               <div className="flex-1 overflow-y-auto py-2">
-                {items.map(({ href, icon: Icon, label }) => (
+                {items.map(({ href, icon: Icon, label, badge }) => (
                   <Link key={href} href={href} onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-cyan-50">
-                    <Icon size={18} className="text-cyan-600" /> {label}
+                    <Icon size={18} className="text-cyan-600" /> <span className="flex-1">{label}</span>
+                    {badge > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center" aria-label={`ข้อความใหม่ ${badge}`}>{badge}</span>}
                   </Link>
                 ))}
               </div>

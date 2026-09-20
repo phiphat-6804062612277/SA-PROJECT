@@ -72,6 +72,7 @@ module.exports = {
   MAX_UPLOADS_PER_DAY,
   ORPHAN_AGE_MS,
   imageUrl,
+  sniffMime,
   decodeDataUrl,
   findOwnedImage,
   checkImageField,

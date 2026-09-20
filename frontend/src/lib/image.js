@@ -11,6 +11,7 @@ export const IMAGE_PRESETS = {
   logo: { maxSide: 400, maxBytes: 180 * 1024 },
   banner: { maxSide: 1200, maxBytes: 540 * 1024 },
   review: { maxSide: 1000, maxBytes: 450 * 1024 },
+  chat: { maxSide: 1400, maxBytes: 700 * 1024 }, // รูปแนบในแชต (backend รับได้ ≤ 800KB — utils/attachments.js)
 };
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp'];

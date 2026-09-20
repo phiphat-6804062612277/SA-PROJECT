@@ -2,7 +2,7 @@
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Settings, Wallet, Clock, Truck, ShieldCheck, Search, ExternalLink, Ban, Scale } from 'lucide-react';
+import { Plus, Settings, Wallet, Clock, Truck, ShieldCheck, Search, ExternalLink, Ban, Scale, MessageCircle } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { baht, updateStoredUser } from '@/lib/auth';
 import { useAuth } from '@/lib/useAuth';
@@ -139,7 +139,13 @@ function SellerDashboard() {
         {me?.storeBanned && (
           <div className="bg-red-50 border border-red-200 text-red-600 rounded-2xl p-3 text-xs font-semibold flex gap-2" role="alert">
             <Ban size={16} className="shrink-0 mt-0.5" />
-            <span>ร้านค้าของคุณถูกระงับโดยผู้ดูแลระบบ สินค้าถูกซ่อนและไม่สามารถลงขายเพิ่มได้ (ยังจัดส่งออเดอร์เดิมและถอนเงินได้)</span>
+            <div className="space-y-1.5">
+              <p>ร้านค้าของคุณถูกระงับโดยผู้ดูแลระบบ สินค้าถูกซ่อนและไม่สามารถลงขายเพิ่มได้ (ยังจัดส่งออเดอร์เดิมและถอนเงินได้)</p>
+              {me.storeBanReason && <p className="font-normal">เหตุผล: {me.storeBanReason}</p>}
+              <Link href="/chat/new?support=1" className="inline-flex items-center gap-1 bg-red-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-full">
+                <MessageCircle size={12} /> ติดต่อ Admin / ยื่นอุทธรณ์
+              </Link>
+            </div>
           </div>
         )}
 

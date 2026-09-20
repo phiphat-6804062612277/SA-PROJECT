@@ -3,7 +3,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import API, { errorMessage } from '@/lib/api';
-import { saveSession, safeNext, homeFor, takeAuthNotice } from '@/lib/auth';
+import { saveSession, safeNext, homeFor, takeAuthNotice, setAppealSession, clearAppealSession } from '@/lib/auth';
 import AuthShell, { authLabel, authInput, authButton, OrDivider } from '@/components/AuthShell';
 import PasswordInput from '@/components/PasswordInput';
 import Notice from '@/components/Notice';
@@ -32,9 +32,17 @@ function LoginForm() {
 
     try {
       const res = await API.post('/auth/login', { email, password });
+      clearAppealSession();
       saveSession(res.data);
       router.replace(safeNext(params.get('next'), homeFor(res.data.user)));
     } catch (err) {
+      const data = err.response?.data;
+      if (err.response?.status === 403 && data?.code === 'BANNED') {
+        // บัญชีถูกระงับ: ไม่ล็อกอินปกติ แต่พาไปหน้าแจ้งสถานะ + ปุ่ม "ติดต่อ Admin / ยื่นเรื่องอุทธรณ์" (ใช้โทเคนอุทธรณ์ที่ใช้ได้เฉพาะแชตซัพพอร์ต)
+        setAppealSession({ token: data.appealToken || '', message: data.message, reason: data.banReason || '' });
+        router.replace('/suspended');
+        return;
+      }
       setError(errorMessage(err, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'));
     } finally {
       setLoading(false);

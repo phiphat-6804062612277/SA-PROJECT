@@ -21,9 +21,10 @@ const signToken = (user) =>
     expiresIn: '7d',
   });
 
+// ล็อกอินด้วยรหัสผ่านถูกต้องแต่บัญชีถูกแบน: ไม่ออก token ปกติ แต่ออก appealToken (อายุสั้น) ให้ใช้ "ติดต่อ Admin / ยื่นอุทธรณ์" ได้อย่างเดียว
 const bannedResponse = (user) => ({
-  code: 'BANNED',
-  message: `บัญชีนี้ถูกระงับการใช้งาน${user.banReason ? ` (เหตุผล: ${user.banReason})` : ''}`,
+  ...auth.bannedBody(user),
+  appealToken: jwt.sign({ id: user._id, purpose: 'appeal' }, JWT_SECRET, { expiresIn: '12h' }),
 });
 
 const safeEqual = (a, b) => {

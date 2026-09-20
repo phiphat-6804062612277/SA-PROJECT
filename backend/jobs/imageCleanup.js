@@ -1,12 +1,14 @@
 const Image = require('../models/Image');
 const User = require('../models/User');
 const Review = require('../models/Review');
+const Attachment = require('../models/Attachment');
 const { IMAGE_URL_RE, ORPHAN_AGE_MS } = require('../utils/images');
 
 /*
  * Worker เก็บกวาดรูปที่อัปโหลดแล้วไม่ได้ถูกใช้งาน (เช่น เลือกรูปโลโก้แล้วกดยกเลิก / แนบรูปรีวิวแล้วไม่ส่ง)
  * รูปที่อายุเกิน 24 ชั่วโมงและไม่มีที่ใดอ้างถึงจะถูกลบ — ที่อ้างถึงรูปได้คือ
  *   User.avatarUrl · User.storeLogoUrl · User.storeBannerUrl · Review.images
+ * และไฟล์แนบแชตที่อัปโหลดแล้วไม่ได้ส่ง (Attachment.attached = false) อายุเกิน 24 ชั่วโมง
  * (ใช้ setInterval เหมือน Auto-release Worker ไม่ต้องติดตั้งแพ็กเกจเพิ่ม)
  */
 
@@ -48,7 +50,10 @@ async function runImageCleanup({ now = new Date(), pageSize = 200, maxScan = 500
     scanned += page.length;
     lastId = page[page.length - 1]._id;
   }
-  return { scanned, removed };
+  // ไฟล์แนบแชตที่อัปโหลดค้างไว้แต่ไม่เคยถูกส่ง (ไฟล์ที่ส่งแล้วเก็บไว้ตลอดตามประวัติแชต)
+  const stale = await Attachment.deleteMany({ attached: false, createdAt: { $lt: cutoff } });
+  const attachmentsRemoved = stale.deletedCount || 0;
+  return { scanned, removed, attachmentsRemoved };
 }
 
 const EVERY_MS = 6 * 60 * 60 * 1000;
@@ -60,7 +65,9 @@ async function tick() {
   running = true;
   try {
     const r = await runImageCleanup();
-    if (r.removed) console.log(`[image-cleanup] ลบรูปที่ไม่ได้ใช้งาน ${r.removed} รูป (ตรวจ ${r.scanned})`);
+    if (r.removed || r.attachmentsRemoved) {
+      console.log(`[image-cleanup] ลบรูปที่ไม่ได้ใช้งาน ${r.removed} รูป, ไฟล์แนบแชตที่ไม่ได้ส่ง ${r.attachmentsRemoved} ไฟล์ (ตรวจ ${r.scanned})`);
+    }
   } catch (err) {
     console.error('[image-cleanup] error:', err.message);
   } finally {

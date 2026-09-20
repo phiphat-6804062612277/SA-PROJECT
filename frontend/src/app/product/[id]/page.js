@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
-import { ShoppingCart, Minus, Plus, ChevronRight } from 'lucide-react';
+import { ShoppingCart, Minus, Plus, ChevronRight, MessageCircle } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { baht, getStoredUser, hasToken } from '@/lib/auth';
 import ProductImage from '@/components/ProductImage';
@@ -127,6 +127,15 @@ export default function ProductDetailPage() {
               </span>
             )}
           </Wrapper>
+        )}
+
+        {product.seller && canBuy && (
+          <Link
+            href={`/chat/new?sellerId=${product.sellerId}&productId=${product._id}`}
+            className="flex items-center justify-center gap-2 border border-cyan-300 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 text-xs font-bold py-2.5 rounded-full"
+          >
+            <MessageCircle size={16} /> แชตกับร้านค้าเรื่องสินค้านี้
+          </Link>
         )}
 
         <div className="border-t pt-3 space-y-1">

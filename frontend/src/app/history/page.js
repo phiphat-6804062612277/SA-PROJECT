@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { ShieldAlert, Scale } from 'lucide-react';
+import { ShieldAlert, Scale, MessageCircle } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { baht } from '@/lib/auth';
 import { useAuth } from '@/lib/useAuth';
@@ -111,7 +111,10 @@ export default function OrderHistoryPage() {
               </div>
               <div className="flex items-center gap-2 min-w-0">
                 <Avatar src={o.sellerId?.storeLogoUrl} name={o.sellerId?.storeName || o.sellerId?.name || '-'} size={22} />
-                <p className="text-[11px] text-slate-500 truncate">ร้าน {o.sellerId?.storeName || o.sellerId?.name || '-'}</p>
+                <p className="text-[11px] text-slate-500 truncate flex-1">ร้าน {o.sellerId?.storeName || o.sellerId?.name || '-'}</p>
+                <Link href={`/chat/new?orderId=${o._id}`} className="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-cyan-700 bg-cyan-50 hover:bg-cyan-100 rounded-full px-2.5 py-1">
+                  <MessageCircle size={12} /> แชตกับร้าน
+                </Link>
               </div>
 
               {o.items.map((it, idx) => (

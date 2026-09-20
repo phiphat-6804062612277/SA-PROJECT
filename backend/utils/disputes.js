@@ -80,7 +80,12 @@ async function buildDetail(dispute, { includeContact = false } = {}) {
       senderName: nameOf(m.senderRole),
       senderAvatarUrl:
         m.senderRole === 'buyer' ? buyerAvatar : m.senderRole === 'seller' ? sellerAvatar : adminAvatar.get(String(m.senderId)) || '',
-      text: m.text,
+      text: m.text || '',
+      messageType: m.messageType || 'TEXT',
+      fileUrl: m.fileUrl || '',
+      fileName: m.fileName || '',
+      fileMime: m.fileMime || '',
+      fileSize: m.fileSize || 0,
       createdAt: m.createdAt,
     })),
     timeline,
