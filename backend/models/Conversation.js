@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
  *   DIRECT  = ผู้ซื้อ ↔ ร้านค้า/ผู้ขาย   (ownerId = ผู้ซื้อ, peerId = ผู้ขาย) — 1 คู่ต่อ 1 ห้อง
  *   SUPPORT = ผู้ใช้ (ผู้ซื้อ/ผู้ขาย) ↔ ทีม Admin  (ownerId = ผู้ใช้, peerId = null = ทีม Admin ทุกคน) — 1 ผู้ใช้ต่อ 1 ห้อง
  *             ใช้ได้แม้บัญชีถูกแบน (topic = APPEAL คือการยื่นอุทธรณ์)
+ * ทุกห้องมีสถานะ OPEN / CLOSED (ห้องถูกปิด = อ่านอย่างเดียว) — แชตข้อพิพาทปิดอัตโนมัติเมื่อ Admin ตัดสิน
  * แชตของข้อพิพาท (Dispute) ยังเก็บในเอกสาร Dispute เดิม แต่ใช้ระบบแนบไฟล์เดียวกัน
  */
 const ConversationSchema = new mongoose.Schema(
@@ -16,8 +17,12 @@ const ConversationSchema = new mongoose.Schema(
 
     // เฉพาะ SUPPORT: HELP = ขอความช่วยเหลือทั่วไป, APPEAL = ยื่นอุทธรณ์ (บัญชี/ร้านถูกระงับ)
     topic: { type: String, enum: ['HELP', 'APPEAL'], default: 'HELP' },
-    // เฉพาะ SUPPORT: Admin ปิดเรื่องได้ (ผู้ใช้ส่งข้อความใหม่ = เปิดอีกครั้ง)
+    // สถานะห้อง (ทุกประเภท): CLOSED = อ่านได้อย่างเดียว ส่งข้อความเพิ่มไม่ได้ — สมาชิกในห้อง (ผู้ซื้อ/ผู้ขาย/Admin) กดปิดหรือเปิดใหม่ได้จาก PUT /api/chat/conversations/:id/status
     status: { type: String, enum: ['OPEN', 'CLOSED'], default: 'OPEN' },
+    closedAt: { type: Date, default: null },
+    closedById: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    closedBySide: { type: String, enum: ['owner', 'peer', 'admin', null], default: null },
+    closedByRole: { type: String, enum: ['buyer', 'seller', 'admin', null], default: null },
 
     // เฉพาะ DIRECT: สินค้า/ออเดอร์ที่กำลังสอบถามอยู่ (อัปเดตทุกครั้งที่เปิดแชตจากสินค้า/ออเดอร์ใหม่)
     context: {

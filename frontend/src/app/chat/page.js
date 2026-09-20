@@ -98,7 +98,7 @@ export default function ChatInboxPage() {
 
   return (
     <div className="bg-[#e0f7f7] min-h-screen pb-24">
-      <PageHeader title="ข้อความ" back />
+      <PageHeader title={isAdmin ? 'Support Chat' : 'ข้อความ'} />
       <div className="p-4 space-y-3">
         {isAdmin ? (
           <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="กรองห้องสนทนา">

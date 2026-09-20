@@ -1,18 +1,20 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Ban, Store, ShieldCheck, CircleAlert, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { Ban, Store, ShieldCheck, ExternalLink, CheckCircle2, Lock, LockOpen } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { authOpts, uploadChatAttachment } from '@/lib/chat';
 import { LIMITS } from '@/lib/limits';
 import ChatMessages from '@/components/chat/ChatMessages';
 import Composer from '@/components/chat/Composer';
+import { ClosedBanner, StatusPill } from '@/components/chat/ChatStatus';
 import ProductImage from '@/components/ProductImage';
 import Loading from '@/components/Loading';
 import Notice from '@/components/Notice';
 import { useNotifications } from '@/components/NotificationProvider';
 
 const POLL_MS = 4000;
+const ROLE_LABEL = { buyer: 'ผู้ซื้อ', seller: 'ผู้ขาย', admin: 'Admin' };
 
 // รวมข้อความใหม่เข้ารายการ: กันซ้ำด้วย id และเรียงตามลำดับเวลา (id เรียงตามเวลาสร้าง)
 function mergeMessages(prev, incoming) {
@@ -52,6 +54,7 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   const [busy, setBusy] = useState(false);
   const [expired, setExpired] = useState(false); // โทเคนอุทธรณ์ใช้ไม่ได้แล้ว (ถูกปลดระงับ/หมดอายุ)
   const lastId = useRef(null);
+  const metaSeq = useRef(0); // เพิ่มเมื่อเราเปลี่ยนสถานะห้องเอง — ทิ้งผล poll ที่เริ่มก่อนหน้านั้น (กันสถานะเด้งกลับชั่วคราว)
   const onMetaRef = useRef(onMeta);
   useEffect(() => {
     onMetaRef.current = onMeta;
@@ -90,6 +93,7 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   // ดึงเฉพาะข้อความที่ใหม่กว่าทุก 4 วินาที (หยุดเมื่อแท็บถูกซ่อน)
   const poll = useCallback(async () => {
     try {
+      const seq = metaSeq.current;
       const after = lastId.current ? `?after=${lastId.current}` : '';
       const res = await API.get(`/chat/conversations/${id}${after}`, authOpts(token));
       // ห้องว่างมาก่อน (lastId = null) จะได้ข้อความทั้งหมดในหน้าแรก — ทั้งสองแบบต่อท้ายรายการโดยกันซ้ำ
@@ -99,7 +103,7 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
         lastId.current = fresh[fresh.length - 1].id;
         refreshNotifications();
       }
-      applyMeta(res.data.conversation);
+      if (seq === metaSeq.current) applyMeta(res.data.conversation);
     } catch (err) {
       // หน้า /suspended: โทเคนอุทธรณ์ใช้ได้เฉพาะตอนยังถูกแบน — 401 = ถูกปลดระงับแล้วหรือหมดอายุ (หยุดดึงข้อความและแจ้งผู้ใช้)
       if (token && err?.response?.status === 401) setExpired(true);
@@ -147,7 +151,25 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
     setError('');
   };
 
-  // Admin: ปลดแบน/ปลดระงับร้าน/ปิด-เปิดเรื่อง
+  // ปิด/เปิดการสนทนา — สมาชิกในห้องทำได้ทุกคน (ปิดแล้วอ่านได้อย่างเดียว จนกว่าจะเปิดใหม่)
+  const changeStatus = async (next) => {
+    const ask = next === 'CLOSED' ? 'ปิดการสนทนานี้?\nทั้งสองฝ่ายจะส่งข้อความและไฟล์เพิ่มไม่ได้ (เปิดการสนทนาอีกครั้งได้ภายหลัง)' : 'เปิดการสนทนานี้อีกครั้ง?';
+    if (!window.confirm(ask)) return;
+    setBusy(true);
+    setError('');
+    metaSeq.current += 1;
+    try {
+      const res = await API.put(`/chat/conversations/${id}/status`, { status: next }, authOpts(token));
+      applyMeta(res.data.conversation);
+      refreshNotifications();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Admin: ปลดแบนบัญชี / ปลดระงับร้านจากในห้องซัพพอร์ต
   const adminAction = async (kind) => {
     const o = conv.owner;
     const asks = {
@@ -160,7 +182,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
     try {
       if (kind === 'unban') await API.put(`/admin/users/${o.id}/unban`);
       else if (kind === 'unbanStore') await API.put(`/admin/stores/${o.id}/unban`);
-      else await API.put(`/chat/conversations/${id}/status`, { status: kind === 'close' ? 'CLOSED' : 'OPEN' });
       await poll();
     } catch (err) {
       setError(errorMessage(err));
@@ -179,6 +200,7 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   if (!conv) return <Loading text="กำลังเปิดห้องสนทนา..." />;
 
   const support = conv.type === 'SUPPORT';
+  const closed = conv.status === 'CLOSED';
   const isAdminSide = conv.side === 'admin';
   const o = conv.owner; // เฉพาะ Admin
   const acc = conv.account; // เฉพาะผู้ใช้ที่ติดต่อ Admin (สถานะบัญชีของตัวเอง)
@@ -186,6 +208,31 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   return (
     <div className={`flex flex-col min-h-0 ${embedded ? 'h-[72vh] rounded-2xl overflow-hidden border border-slate-200 bg-[#e0f7f7]' : 'h-full'}`}>
       <div className="shrink-0 space-y-1.5 px-3 pt-2 empty:hidden">
+        {/* Header สถานะแชต: OPEN / CLOSED + ปุ่มปิด-เปิดการสนทนา */}
+        <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border border-slate-100">
+          <StatusPill status={conv.status} />
+          <span className="flex-1 min-w-0 text-[11px] text-slate-500 truncate">{closed ? 'อ่านได้อย่างเดียว' : 'กำลังสนทนา'}</span>
+          {closed ? (
+            <button type="button" disabled={busy} onClick={() => changeStatus('OPEN')} className="shrink-0 inline-flex items-center gap-1 bg-white border border-slate-300 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-full disabled:opacity-50">
+              <LockOpen size={12} /> เปิดการสนทนาอีกครั้ง
+            </button>
+          ) : (
+            !embedded && (
+              <button type="button" disabled={busy} onClick={() => changeStatus('CLOSED')} className="shrink-0 inline-flex items-center gap-1 bg-white border border-slate-300 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-full disabled:opacity-50">
+                <Lock size={12} /> ปิดการสนทนา (Close Chat)
+              </button>
+            )
+          )}
+        </div>
+        {closed && (
+          <ClosedBanner>
+            <p>
+              {conv.closedBy ? `ปิดโดย${conv.closedBy.mine ? 'คุณ' : ROLE_LABEL[conv.closedBy.role] || 'อีกฝ่าย'}` : 'ปิดการสนทนาแล้ว'}
+              {conv.closedAt ? ` เมื่อ ${new Date(conv.closedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+              {' · ส่งข้อความและไฟล์เพิ่มไม่ได้'}
+            </p>
+          </ClosedBanner>
+        )}
         {conv.context && (
           <div className="flex items-center gap-2 bg-white rounded-xl p-2 border border-slate-100">
             {conv.context.kind === 'product' && <ProductImage src={conv.context.imageUrl} alt="" className="w-10 h-10 rounded-lg shrink-0" iconSize={16} />}
@@ -228,11 +275,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
             <Link href="/login" className="inline-block font-bold underline">เข้าสู่ระบบอีกครั้ง</Link>
           </Box>
         )}
-        {support && !isAdminSide && conv.status === 'CLOSED' && (
-          <Box tone="slate" icon={CircleAlert}>
-            <p>Admin ปิดเรื่องนี้แล้ว หากยังต้องการความช่วยเหลือ พิมพ์ข้อความใหม่ได้เลย ระบบจะเปิดเรื่องอีกครั้ง</p>
-          </Box>
-        )}
 
         {/* Admin: ข้อมูลผู้ใช้ + เครื่องมือ */}
         {isAdminSide && o && (
@@ -244,7 +286,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
               </div>
               <div className="flex flex-wrap justify-end gap-1 shrink-0">
                 {conv.topic === 'APPEAL' && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">ยื่นอุทธรณ์</span>}
-                {conv.status === 'CLOSED' && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">ปิดเรื่องแล้ว</span>}
               </div>
             </div>
             {(o.isBanned || o.storeBanned) && (
@@ -262,15 +303,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
               {o.storeBanned && (
                 <button type="button" disabled={busy} onClick={() => adminAction('unbanStore')} className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-3 py-1.5 rounded-full disabled:opacity-50">
                   <Store size={12} /> ปลดระงับร้าน
-                </button>
-              )}
-              {conv.status === 'CLOSED' ? (
-                <button type="button" disabled={busy} onClick={() => adminAction('open')} className="bg-white border border-slate-300 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-full disabled:opacity-50">
-                  เปิดเรื่องอีกครั้ง
-                </button>
-              ) : (
-                <button type="button" disabled={busy} onClick={() => adminAction('close')} className="bg-white border border-slate-300 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-full disabled:opacity-50">
-                  ปิดเรื่อง
                 </button>
               )}
             </div>
@@ -294,7 +326,7 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
         onSend={send}
         upload={(file) => uploadChatAttachment(file, { scope: 'conversation', scopeId: id, token })}
         disabled={!conv.canSend || expired}
-        disabledText={expired ? 'เซสชันอุทธรณ์สิ้นสุดแล้ว กรุณาเข้าสู่ระบบอีกครั้ง' : conv.blockedReason}
+        disabledText={expired ? 'เซสชันอุทธรณ์สิ้นสุดแล้ว กรุณาเข้าสู่ระบบอีกครั้ง' : closed ? 'การสนทนานี้ถูกปิดแล้ว — อ่านได้อย่างเดียว' : conv.blockedReason}
         maxLength={LIMITS.CHAT_MESSAGE}
         placeholder={support && !isAdminSide ? 'พิมพ์ข้อความถึง Admin...' : 'พิมพ์ข้อความ...'}
         className="shrink-0"

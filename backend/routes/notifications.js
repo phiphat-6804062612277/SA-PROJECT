@@ -12,7 +12,7 @@ const shortId = (id) => String(id).slice(-6).toUpperCase();
 const money = (n) => `฿${Number(n || 0).toLocaleString('en-US')}`;
 const dateTh = (d) => new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
 
-// งานที่ต้องทำของผู้ใช้ตามบทบาท (ใช้แสดง Badge ที่ไอคอนโปรไฟล์/แท็บเมนู และ Dropdown สรุปงาน)
+// งานที่ต้องทำของผู้ใช้ตามบทบาท (ใช้แสดง Badge ที่แท็บเมนูที่เกี่ยวข้อง: คำสั่งซื้อ / Seller Orders / Disputes / แชต — ไม่แสดงที่ไอคอนโปรไฟล์)
 //   Buyer  → ออเดอร์ที่จัดส่งแล้วและรอกด "ยืนยันรับสินค้า"
 //   Seller → ออเดอร์ใหม่ที่รอจัดส่ง/กรอกเลขพัสดุ + ข้อพิพาทที่ต้องชี้แจง
 //   Admin  → ข้อพิพาทที่รอตัดสิน
@@ -60,13 +60,13 @@ async function sellerTasks(userId) {
       label: 'ออเดอร์ใหม่รอจัดส่ง',
       description: 'ผู้ซื้อชำระเงินแล้ว (เงินอยู่ใน Escrow) — จัดส่งสินค้าและกรอกเลขพัสดุ',
       count: todoCount,
-      href: '/seller?tab=orders&filter=todo',
+      href: '/seller/orders?filter=todo',
       cta: 'ไปกรอกเลขพัสดุ',
       entries: todoRows.map((o) => ({
         id: String(o._id),
         text: `ออเดอร์ #${shortId(o._id)} · ${money(o.totalAmount)}`,
         hint: `${(o.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} ชิ้น · สั่งเมื่อ ${dateTh(o.createdAt)}`,
-        href: '/seller?tab=orders&filter=todo',
+        href: '/seller/orders?filter=todo',
       })),
     });
   }
@@ -76,13 +76,13 @@ async function sellerTasks(userId) {
       label: 'ข้อพิพาทที่ต้องชี้แจง',
       description: 'ผู้ซื้อเปิดข้อพิพาท เงินถูก Freeze — ตอบชี้แจงให้ Admin พิจารณา',
       count: disputedCount,
-      href: '/seller?tab=orders&filter=disputed',
+      href: '/seller/orders?filter=disputed',
       cta: 'ดูข้อพิพาท',
       entries: disputedRows.map((o) => ({
         id: String(o._id),
         text: `ออเดอร์ #${shortId(o._id)} · ${money(o.totalAmount)}`,
         hint: 'รอ Admin ตัดสิน',
-        href: o.disputeId ? `/disputes/${o.disputeId}` : '/seller?tab=orders&filter=disputed',
+        href: o.disputeId ? `/disputes/${o.disputeId}` : '/seller/orders?filter=disputed',
       })),
     });
   }
@@ -142,7 +142,7 @@ async function chatTasks(user) {
       href: '/chat',
       cta: 'เปิดกล่องข้อความ',
       entries: rows.map((c) => {
-        const v = conversationView(c, sideOf(c, user), people);
+        const v = conversationView(c, sideOf(c, user), people, user.id);
         return {
           id: String(c._id),
           text: `${v.counterpart.name}: ${v.lastMessage?.preview || 'ข้อความใหม่'}`,

@@ -42,8 +42,11 @@ function previewOf({ text, messageType, fileName }) {
   return '';
 }
 
-// ส่งข้อความได้ไหม — DIRECT: ห้ามส่งหาบัญชีที่ถูกแบน (ร้านที่ "ถูกระงับร้านอย่างเดียว" ยังตอบลูกค้าเดิมได้) / SUPPORT: ส่งได้เสมอ (รวมผู้ที่ถูกแบน)
+// ส่งข้อความได้ไหม — ห้องที่ถูกปิด (CLOSED) ส่งไม่ได้ทุกประเภท (อ่านอย่างเดียว จนกว่าจะเปิดใหม่)
+// DIRECT: ห้ามส่งหาบัญชีที่ถูกแบน (ร้านที่ "ถูกระงับร้านอย่างเดียว" ยังตอบลูกค้าเดิมได้) / SUPPORT: ส่งได้เสมอ (รวมผู้ที่ถูกแบน)
+const CLOSED_REASON = 'การสนทนานี้ถูกปิดแล้ว';
 function sendability(conv, side, people) {
+  if (conv.status === 'CLOSED') return { canSend: false, reason: CLOSED_REASON };
   if (conv.type === 'SUPPORT') return { canSend: true, reason: '' };
   const other = people.get(String(side === 'owner' ? conv.peerId : conv.ownerId));
   if (!other) return { canSend: false, reason: 'ไม่พบบัญชีของอีกฝ่ายแล้ว' };
@@ -56,12 +59,12 @@ const contextView = (conv, side) => {
   if (!c || !c.kind) return null;
   let href = null;
   if (c.kind === 'product') href = `/product/${c.refId}`;
-  else if (c.kind === 'order') href = side === 'owner' ? '/history' : side === 'peer' ? '/seller?tab=orders' : null;
+  else if (c.kind === 'order') href = side === 'owner' ? '/history' : side === 'peer' ? '/seller/orders' : null;
   return { kind: c.kind, refId: c.refId, label: c.label || '', imageUrl: c.imageUrl || '', href };
 };
 
 // รูปแบบห้องที่ส่งให้ client ตามมุมมองของผู้ดู (side)
-function conversationView(conv, side, people) {
+function conversationView(conv, side, people, viewerId) {
   const owner = people.get(String(conv.ownerId));
   const peer = conv.peerId ? people.get(String(conv.peerId)) : null;
 
@@ -78,7 +81,14 @@ function conversationView(conv, side, people) {
     type: conv.type,
     isSupportChat: !!conv.isSupportChat,
     topic: conv.type === 'SUPPORT' ? conv.topic : null,
-    status: conv.type === 'SUPPORT' ? conv.status : null,
+    status: conv.status || 'OPEN',
+    closedAt: conv.status === 'CLOSED' ? conv.closedAt || null : null,
+    // ใครปิดห้อง (mine = เราเป็นคนปิดเอง) — ใช้แสดงใน Banner "การสนทนานี้ถูกปิดแล้ว"
+    // mine: เทียบด้วยรหัสผู้ใช้ (Admin หลายคนใช้ฝั่ง 'admin' เดียวกัน จึงเทียบฝั่งอย่างเดียวไม่ได้) — ห้องเก่าที่ไม่มี closedById ใช้ฝั่งแทน
+    closedBy:
+      conv.status === 'CLOSED' && conv.closedBySide
+        ? { role: conv.closedByRole || null, mine: conv.closedById && viewerId ? String(conv.closedById) === String(viewerId) : conv.closedBySide === side }
+        : null,
     side,
     counterpart,
     context: contextView(conv, side),
@@ -140,6 +150,7 @@ function messageView(m, conv, side, people) {
 
 module.exports = {
   SUPPORT_NAME,
+  CLOSED_REASON,
   sideOf,
   personView,
   loadPeople,

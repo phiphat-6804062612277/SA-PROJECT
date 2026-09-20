@@ -5,10 +5,12 @@ import API from '@/lib/api';
 import { clearSession, getStoredUser, hasToken, USER_EVENT } from '@/lib/auth';
 
 const EMPTY = { total: 0, items: [], loaded: false, error: false };
-const NotificationContext = createContext({ ...EMPTY, refresh: () => {} });
+const NotificationContext = createContext({ ...EMPTY, refresh: () => {}, countOf: () => 0 });
 
-// งานที่ต้องทำของผู้ใช้ตามบทบาท (Buyer: รอยืนยันรับสินค้า / Seller: รอจัดส่ง / Admin: ข้อพิพาทรอตัดสิน)
-//   const { total, items, refresh } = useNotifications();
+// งานที่ต้องทำของผู้ใช้ตามบทบาท (Buyer: รอยืนยันรับสินค้า / Seller: รอจัดส่ง / Admin: ข้อพิพาทรอตัดสิน / ทุกบทบาท: ข้อความแชตใหม่)
+//   const { total, items, refresh, countOf } = useNotifications();
+//   countOf('buyer_confirm')  → จำนวนงานของหมวดนั้นๆ ไว้แสดง Badge ที่เมนูที่เกี่ยวข้อง (ไม่แสดงที่ไอคอนโปรไฟล์)
+//   keys: buyer_confirm · seller_ship · seller_dispute · admin_disputes · chat_unread
 export const useNotifications = () => useContext(NotificationContext);
 
 const POLL_MS = 45_000;
@@ -82,6 +84,13 @@ export default function NotificationProvider({ children }) {
     };
   }, [refresh]);
 
-  const value = useMemo(() => ({ ...state, refresh }), [state, refresh]);
+  const value = useMemo(
+    () => ({
+      ...state,
+      refresh,
+      countOf: (...keys) => state.items.filter((t) => keys.includes(t.key)).reduce((sum, t) => sum + (t.count || 0), 0),
+    }),
+    [state, refresh]
+  );
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 }

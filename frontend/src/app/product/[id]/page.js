@@ -7,6 +7,7 @@ import API, { errorMessage } from '@/lib/api';
 import { baht, getStoredUser, hasToken } from '@/lib/auth';
 import ProductImage from '@/components/ProductImage';
 import PageHeader from '@/components/PageHeader';
+import CartButton from '@/components/CartButton';
 import Loading from '@/components/Loading';
 import ReviewSection from '@/components/ReviewSection';
 import Avatar from '@/components/Avatar';
@@ -96,7 +97,7 @@ export default function ProductDetailPage() {
 
   return (
     <div className="bg-white min-h-screen pb-32">
-      <PageHeader title="รายละเอียดสินค้า" back />
+      <PageHeader title="รายละเอียดสินค้า" back right={<CartButton />} />
 
       <ProductImage src={product.imageUrl} alt={product.name} className="w-full h-72" iconSize={64} />
 
