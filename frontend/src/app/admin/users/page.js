@@ -178,7 +178,6 @@ export default function AdminUsersPage() {
                     ฿ {baht(p.price)} · สต็อก {p.stock} · ร้าน {p.seller?.storeName || p.seller?.name || '-'}
                   </p>
                   <div className="flex gap-1 mt-1">
-                    {p.inStore === false && <Badge>นอกร้าน</Badge>}
                     {p.suspended && <Badge tone="red">ถูกระงับ</Badge>}
                   </div>
                 </div>

@@ -1,20 +1,18 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Ban, Store, ShieldCheck, ExternalLink, CheckCircle2, Lock, LockOpen } from 'lucide-react';
+import { Ban, Store, ShieldCheck, ExternalLink, CheckCircle2 } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { authOpts, uploadChatAttachment } from '@/lib/chat';
 import { LIMITS } from '@/lib/limits';
 import ChatMessages from '@/components/chat/ChatMessages';
 import Composer from '@/components/chat/Composer';
-import { ClosedBanner, StatusPill } from '@/components/chat/ChatStatus';
 import ProductImage from '@/components/ProductImage';
 import Loading from '@/components/Loading';
 import Notice from '@/components/Notice';
 import { useNotifications } from '@/components/NotificationProvider';
 
 const POLL_MS = 4000;
-const ROLE_LABEL = { buyer: 'ผู้ซื้อ', seller: 'ผู้ขาย', admin: 'Admin' };
 
 // รวมข้อความใหม่เข้ารายการ: กันซ้ำด้วย id และเรียงตามลำดับเวลา (id เรียงตามเวลาสร้าง)
 function mergeMessages(prev, incoming) {
@@ -40,7 +38,7 @@ const Box = ({ tone = 'red', icon: Icon, children }) => {
 };
 
 /**
- * ห้องสนทนา 1 ห้อง (แชตซื้อขาย Buyer ↔ Store, หรือแชตติดต่อ Admin / ยื่นอุทธรณ์) — โหลดข้อความ, ส่งข้อความ/ไฟล์แนบ, ดึงข้อความใหม่ทุก 4 วินาที
+ * ห้องสนทนา 1 ห้อง (แชตซื้อขาย Buyer ↔ Store, หรือแชตติดต่อ Admin / ยื่นอุทธรณ์) — ส่งข้อความ/แนบไฟล์ได้ตลอด ไม่มีสถานะปิดห้อง · โหลดข้อความ, ส่งข้อความ/ไฟล์แนบ, ดึงข้อความใหม่ทุก 4 วินาที
  *   id: รหัสห้อง   token: (ไม่บังคับ) โทเคนเฉพาะกิจ เช่น appeal token ในหน้า /suspended
  *   embedded: แสดงเป็นการ์ดความสูงคงที่ในหน้า (ไม่ใช่เต็มจอ)   onMeta(conversation): แจ้งแม่เมื่อโหลดข้อมูลห้องได้/เปลี่ยน
  */
@@ -54,7 +52,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   const [busy, setBusy] = useState(false);
   const [expired, setExpired] = useState(false); // โทเคนอุทธรณ์ใช้ไม่ได้แล้ว (ถูกปลดระงับ/หมดอายุ)
   const lastId = useRef(null);
-  const metaSeq = useRef(0); // เพิ่มเมื่อเราเปลี่ยนสถานะห้องเอง — ทิ้งผล poll ที่เริ่มก่อนหน้านั้น (กันสถานะเด้งกลับชั่วคราว)
   const onMetaRef = useRef(onMeta);
   useEffect(() => {
     onMetaRef.current = onMeta;
@@ -93,7 +90,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   // ดึงเฉพาะข้อความที่ใหม่กว่าทุก 4 วินาที (หยุดเมื่อแท็บถูกซ่อน)
   const poll = useCallback(async () => {
     try {
-      const seq = metaSeq.current;
       const after = lastId.current ? `?after=${lastId.current}` : '';
       const res = await API.get(`/chat/conversations/${id}${after}`, authOpts(token));
       // ห้องว่างมาก่อน (lastId = null) จะได้ข้อความทั้งหมดในหน้าแรก — ทั้งสองแบบต่อท้ายรายการโดยกันซ้ำ
@@ -103,7 +99,7 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
         lastId.current = fresh[fresh.length - 1].id;
         refreshNotifications();
       }
-      if (seq === metaSeq.current) applyMeta(res.data.conversation);
+      applyMeta(res.data.conversation);
     } catch (err) {
       // หน้า /suspended: โทเคนอุทธรณ์ใช้ได้เฉพาะตอนยังถูกแบน — 401 = ถูกปลดระงับแล้วหรือหมดอายุ (หยุดดึงข้อความและแจ้งผู้ใช้)
       if (token && err?.response?.status === 401) setExpired(true);
@@ -151,24 +147,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
     setError('');
   };
 
-  // ปิด/เปิดการสนทนา — สมาชิกในห้องทำได้ทุกคน (ปิดแล้วอ่านได้อย่างเดียว จนกว่าจะเปิดใหม่)
-  const changeStatus = async (next) => {
-    const ask = next === 'CLOSED' ? 'ปิดการสนทนานี้?\nทั้งสองฝ่ายจะส่งข้อความและไฟล์เพิ่มไม่ได้ (เปิดการสนทนาอีกครั้งได้ภายหลัง)' : 'เปิดการสนทนานี้อีกครั้ง?';
-    if (!window.confirm(ask)) return;
-    setBusy(true);
-    setError('');
-    metaSeq.current += 1;
-    try {
-      const res = await API.put(`/chat/conversations/${id}/status`, { status: next }, authOpts(token));
-      applyMeta(res.data.conversation);
-      refreshNotifications();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // Admin: ปลดแบนบัญชี / ปลดระงับร้านจากในห้องซัพพอร์ต
   const adminAction = async (kind) => {
     const o = conv.owner;
@@ -200,7 +178,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   if (!conv) return <Loading text="กำลังเปิดห้องสนทนา..." />;
 
   const support = conv.type === 'SUPPORT';
-  const closed = conv.status === 'CLOSED';
   const isAdminSide = conv.side === 'admin';
   const o = conv.owner; // เฉพาะ Admin
   const acc = conv.account; // เฉพาะผู้ใช้ที่ติดต่อ Admin (สถานะบัญชีของตัวเอง)
@@ -208,31 +185,6 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
   return (
     <div className={`flex flex-col min-h-0 ${embedded ? 'h-[72vh] rounded-2xl overflow-hidden border border-slate-200 bg-[#e0f7f7]' : 'h-full'}`}>
       <div className="shrink-0 space-y-1.5 px-3 pt-2 empty:hidden">
-        {/* Header สถานะแชต: OPEN / CLOSED + ปุ่มปิด-เปิดการสนทนา */}
-        <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border border-slate-100">
-          <StatusPill status={conv.status} />
-          <span className="flex-1 min-w-0 text-[11px] text-slate-500 truncate">{closed ? 'อ่านได้อย่างเดียว' : 'กำลังสนทนา'}</span>
-          {closed ? (
-            <button type="button" disabled={busy} onClick={() => changeStatus('OPEN')} className="shrink-0 inline-flex items-center gap-1 bg-white border border-slate-300 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-full disabled:opacity-50">
-              <LockOpen size={12} /> เปิดการสนทนาอีกครั้ง
-            </button>
-          ) : (
-            !embedded && (
-              <button type="button" disabled={busy} onClick={() => changeStatus('CLOSED')} className="shrink-0 inline-flex items-center gap-1 bg-white border border-slate-300 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-full disabled:opacity-50">
-                <Lock size={12} /> ปิดการสนทนา (Close Chat)
-              </button>
-            )
-          )}
-        </div>
-        {closed && (
-          <ClosedBanner>
-            <p>
-              {conv.closedBy ? `ปิดโดย${conv.closedBy.mine ? 'คุณ' : ROLE_LABEL[conv.closedBy.role] || 'อีกฝ่าย'}` : 'ปิดการสนทนาแล้ว'}
-              {conv.closedAt ? ` เมื่อ ${new Date(conv.closedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
-              {' · ส่งข้อความและไฟล์เพิ่มไม่ได้'}
-            </p>
-          </ClosedBanner>
-        )}
         {conv.context && (
           <div className="flex items-center gap-2 bg-white rounded-xl p-2 border border-slate-100">
             {conv.context.kind === 'product' && <ProductImage src={conv.context.imageUrl} alt="" className="w-10 h-10 rounded-lg shrink-0" iconSize={16} />}
@@ -326,7 +278,7 @@ export default function ChatRoom({ id, token, embedded = false, onMeta }) {
         onSend={send}
         upload={(file) => uploadChatAttachment(file, { scope: 'conversation', scopeId: id, token })}
         disabled={!conv.canSend || expired}
-        disabledText={expired ? 'เซสชันอุทธรณ์สิ้นสุดแล้ว กรุณาเข้าสู่ระบบอีกครั้ง' : closed ? 'การสนทนานี้ถูกปิดแล้ว — อ่านได้อย่างเดียว' : conv.blockedReason}
+        disabledText={expired ? 'เซสชันอุทธรณ์สิ้นสุดแล้ว กรุณาเข้าสู่ระบบอีกครั้ง' : conv.blockedReason}
         maxLength={LIMITS.CHAT_MESSAGE}
         placeholder={support && !isAdminSide ? 'พิมพ์ข้อความถึง Admin...' : 'พิมพ์ข้อความ...'}
         className="shrink-0"

@@ -84,7 +84,7 @@ export default function StoreSettingsPage() {
           </div>
 
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            ตอนลงขายสินค้า คุณเลือกได้ว่าจะวางสินค้า <b>ในร้าน</b> (แสดงในหน้าร้านและตลาดรวม) หรือ <b>นอกร้าน</b> (ขายในตลาดรวมเท่านั้น)
+            สินค้าทุกชิ้นที่คุณลงขายจะอยู่ในร้านนี้ และแสดงในตลาดรวมด้วยโดยอัตโนมัติ
           </p>
 
           <Notice type="error">{error}</Notice>

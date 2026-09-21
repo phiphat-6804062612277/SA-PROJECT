@@ -18,6 +18,11 @@ const userSchema = new mongoose.Schema(
     storeLogoUrl: { type: String, default: '' }, // โลโก้ร้าน
     storeBannerUrl: { type: String, default: '' }, // ปก/แบนเนอร์ร้าน
 
+    // Single Active Session: รหัสเซสชันล่าสุดของบัญชีนี้ (สุ่มใหม่ทุกครั้งที่ล็อกอิน/สมัคร และฝังไว้ใน JWT เป็น `sid`)
+    // โทเคนที่ sid ไม่ตรงกับค่านี้ = เซสชันเก่าที่ถูกแทนที่แล้ว → middleware ปฏิเสธทันที ('' = ออกจากระบบ/รีเซ็ตรหัสผ่านแล้ว ไม่มีเซสชันใดใช้ได้)
+    // select:false → ไม่หลุดไปกับ response ใดๆ โดยไม่ได้ตั้งใจ (ต้อง .select('+sessionId') เมื่อจะอ่าน)
+    sessionId: { type: String, default: '', select: false },
+
     // การแบนโดย Admin: แบนบัญชี (เข้าสู่ระบบไม่ได้) และ/หรือ แบนเฉพาะร้านค้า (สินค้าถูกซ่อน ขายไม่ได้)
     isBanned: { type: Boolean, default: false },
     banReason: { type: String, default: '' },

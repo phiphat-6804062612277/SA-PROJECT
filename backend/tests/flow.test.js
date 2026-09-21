@@ -21,6 +21,7 @@ const Image = require('../models/Image');
 const { credit } = require('../utils/wallet');
 const { reconcilePayouts } = require('../utils/escrow');
 const { runAutoRelease } = require('../jobs/autoRelease');
+const { runMigrations } = require('../utils/migrations');
 
 let mongod;
 
@@ -342,10 +343,15 @@ test('product name <= 100 and description <= 1000 characters', async () => {
   assert.equal((await api().put(`/api/products/${p._id}`).set(as(seller)).send({ description: 'z'.repeat(1001) })).status, 400);
 });
 
-test('store: default name, rename, in-store vs outside-store products', async () => {
+test('store: default name, rename; every product belongs to its creator\'s store (no outside-store option)', async () => {
   const seller = await register('seller', 'shopper');
-  const inside = await newProduct(seller, { name: 'Inside', inStore: true });
-  const outside = await newProduct(seller, { name: 'Outside', inStore: false });
+  const other = await register('seller', 'other');
+  const a = await newProduct(seller, { name: 'A' });
+  // ส่ง inStore=false หรือ sellerId/storeId ของร้านอื่นมาก็ไม่มีผล: สินค้าผูกกับร้านของผู้สร้างเสมอ
+  const b = await newProduct(seller, { name: 'B', inStore: false, sellerId: other.user.id, storeId: other.user.id });
+  assert.equal(String(a.sellerId), seller.user.id);
+  assert.equal(String(b.sellerId), seller.user.id);
+  assert.ok(!('inStore' in b));
 
   const me = await api().get('/api/auth/me').set(as(seller));
   assert.equal(me.body.storeName, 'shopper'); // ชื่อร้านเริ่มต้น = ชื่อผู้ใช้
@@ -355,17 +361,28 @@ test('store: default name, rename, in-store vs outside-store products', async ()
   assert.equal((await api().put('/api/stores/me').set(as(seller)).send({ storeName: 'x'.repeat(61) })).status, 400);
   assert.equal((await api().put('/api/stores/me').set(as(await register('buyer'))).send({ storeName: 'hack' })).status, 403);
 
+  // สินค้าทุกชิ้นอยู่ในหน้าร้านและตลาดรวม
   const store = await api().get(`/api/stores/${upd.body.user.id}`);
   assert.equal(store.body.store.name, 'Sunny Store');
-  assert.deepEqual(store.body.products.map((x) => x.name), ['Inside']); // นอกร้านไม่โผล่ในหน้าร้าน
-
+  assert.deepEqual(store.body.products.map((x) => x.name).sort(), ['A', 'B']);
   const market = await api().get('/api/products');
-  assert.deepEqual(market.body.map((x) => x.name).sort(), ['Inside', 'Outside']); // แต่ยังขายในตลาดรวม
+  assert.deepEqual(market.body.map((x) => x.name).sort(), ['A', 'B']);
+  assert.ok(market.body.every((x) => x.seller.id === seller.user.id));
 
-  // สลับตำแหน่งสินค้า
-  await api().put(`/api/products/${outside._id}`).set(as(seller)).send({ inStore: true });
+  // แก้ไขสินค้าย้ายไปร้านอื่นไม่ได้ (sellerId เปลี่ยนไม่ได้) และ inStore ไม่มีผล
+  const moved = await api().put(`/api/products/${a._id}`).set(as(seller)).send({ price: 1500, inStore: false, sellerId: other.user.id });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.body.product.price, 1500);
+  assert.equal(String(moved.body.product.sellerId), seller.user.id);
+  assert.equal((await Product.findById(a._id).lean()).sellerId.toString(), seller.user.id);
+  assert.equal((await api().get(`/api/stores/${other.user.id}`)).body.products.length, 0);
   assert.equal((await api().get(`/api/stores/${upd.body.user.id}`)).body.products.length, 2);
-  assert.ok(inside._id);
+
+  // สินค้าเก่าที่เคยตั้งเป็น "นอกร้าน" (inStore=false ในฐานข้อมูล) ต้องแสดงในหน้าร้านด้วย และงานปรับข้อมูลลบฟิลด์ทิ้ง
+  await Product.collection.updateOne({ _id: new mongoose.Types.ObjectId(b._id) }, { $set: { inStore: false } });
+  assert.equal((await api().get(`/api/stores/${upd.body.user.id}`)).body.products.length, 2);
+  await runMigrations();
+  assert.ok(!('inStore' in (await Product.findById(b._id).lean())));
 });
 
 test('reviews: only after completion, once per side, feeds product/store ratings', async () => {
@@ -541,6 +558,80 @@ test('forgot password: too many wrong OTP attempts locks the code; reset token i
 });
 
 
+// ===================================================================== Single Active Session
+test('single active session: a new login invalidates the old device token immediately', async () => {
+  const first = await register('buyer'); // เครื่องที่ 1 (สมัคร = ล็อกอิน)
+  assert.equal((await api().get('/api/wallet').set(as(first))).status, 200);
+
+  const login = () => api().post('/api/auth/login').send({ email: 'buyer@t.com', password: '123456' });
+  const second = { token: (await login()).body.token }; // เครื่องที่ 2
+  assert.ok(second.token);
+
+  // เครื่องที่ 1 ถูกเด้งออกทุก API พร้อมรหัส SESSION_REPLACED
+  for (const path of ['/api/wallet', '/api/auth/me', '/api/notifications']) {
+    const old = await api().get(path).set(as(first));
+    assert.equal(old.status, 401, path);
+    assert.equal(old.body.code, 'SESSION_REPLACED', path);
+    assert.match(old.body.message, /อุปกรณ์/);
+  }
+  const me = await api().get('/api/auth/me').set(as(second));
+  assert.equal(me.status, 200);
+  assert.ok(!JSON.stringify(me.body).includes('sessionId')); // รหัสเซสชันไม่หลุดออกไปกับ response
+
+  // เครื่องที่ 3 ล็อกอินซ้ำ → เครื่องที่ 2 ถูกเด้งต่อ
+  const third = { token: (await login()).body.token };
+  assert.equal((await api().get('/api/wallet').set(as(second))).status, 401);
+  assert.equal((await api().get('/api/wallet').set(as(third))).status, 200);
+  // เขียน/แก้ข้อมูลด้วยโทเคนเก่าก็ไม่ได้
+  assert.equal((await api().put('/api/auth/profile').set(as(second)).send({ name: 'hijack' })).status, 401);
+  assert.notEqual((await api().get('/api/auth/me').set(as(third))).body.name, 'hijack');
+});
+
+test('single active session: sessions are per account, logout ends the session, legacy/forged tokens are rejected', async () => {
+  const jwt = require('jsonwebtoken');
+  const buyer = await register('buyer');
+  const seller = await register('seller');
+  // บัญชีอื่นล็อกอินไม่กระทบกัน
+  await api().post('/api/auth/login').send({ email: 'seller@t.com', password: '123456' });
+  assert.equal((await api().get('/api/wallet').set(as(buyer))).status, 200);
+
+  // ออกจากระบบ → โทเคนเดิมใช้ไม่ได้อีก (ไม่ใช่ SESSION_REPLACED) แต่ล็อกอินใหม่ได้
+  assert.equal((await api().post('/api/auth/logout')).status, 401);
+  assert.equal((await api().post('/api/auth/logout').set(as(buyer))).status, 200);
+  const dead = await api().get('/api/wallet').set(as(buyer));
+  assert.equal(dead.status, 401);
+  assert.equal(dead.body.code, undefined);
+  const again = await api().post('/api/auth/login').send({ email: 'buyer@t.com', password: '123456' });
+  assert.equal((await api().get('/api/wallet').set({ Authorization: `Bearer ${again.body.token}` })).status, 200);
+
+  // โทเคนรุ่นเก่าที่ไม่มี sid / sid ปลอม (แม้เซ็นด้วยกุญแจถูก) ใช้ไม่ได้
+  const legacy = jwt.sign({ id: buyer.user.id, email: 'buyer@t.com', role: 'buyer' }, 'test-secret');
+  assert.equal((await api().get('/api/wallet').set({ Authorization: `Bearer ${legacy}` })).status, 401);
+  const forged = jwt.sign({ id: buyer.user.id, email: 'buyer@t.com', role: 'buyer', sid: 'deadbeef' }, 'test-secret');
+  assert.equal((await api().get('/api/wallet').set({ Authorization: `Bearer ${forged}` })).status, 401);
+});
+
+test('single active session: resetting the password signs the account out everywhere; banned login does not steal the session', async () => {
+  const buyer = await register('buyer', 'sess');
+  const a = await admin();
+  const req = (path, body) => api().post(`/api/auth/${path}`).send(body);
+
+  const sent = await req('forgot-password', { email: 'sess@t.com' });
+  const ver = await req('verify-otp', { email: 'sess@t.com', otp: sent.body.demoOtp });
+  assert.equal((await req('reset-password', { resetToken: ver.body.resetToken, password: 'newpass1' })).status, 200);
+  assert.equal((await api().get('/api/auth/me').set(as(buyer))).status, 401); // เซสชันเดิมถูกล้าง
+
+  const fresh = (await req('login', { email: 'sess@t.com', password: 'newpass1' })).body;
+  const freshAuth = { Authorization: `Bearer ${fresh.token}` };
+  assert.equal((await api().get('/api/auth/me').set(freshAuth)).status, 200);
+
+  // ผู้ที่ถูกแบนล็อกอิน (ได้แค่ appeal token) ไม่ไปแทนที่เซสชันเดิมของใคร — ปลดแบนแล้วเซสชันเดิมยังใช้ได้
+  await api().put(`/api/admin/users/${fresh.user.id}/ban`).set(as(a)).send({ reason: 'test' });
+  assert.equal((await req('login', { email: 'sess@t.com', password: 'newpass1' })).status, 403);
+  await api().put(`/api/admin/users/${fresh.user.id}/unban`).set(as(a));
+  assert.equal((await api().get('/api/auth/me').set(freshAuth)).status, 200);
+});
+
 // ===================================================================== ราคา/สต็อกสูงสุด
 test('product price/stock have sane upper limits; absurd legacy prices are hidden from the market', async () => {
   const seller = await register('seller');
@@ -562,7 +653,6 @@ test('product price/stock have sane upper limits; absurd legacy prices are hidde
     stock: 1,
     isActive: true,
     suspended: false,
-    inStore: true,
   });
   const list = (await api().get('/api/products')).body;
   assert.ok(!list.some((p) => String(p._id) === String(bad.insertedId)));

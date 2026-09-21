@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Pencil, Trash2, Store, Globe } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import API, { errorMessage } from '@/lib/api';
 import { baht } from '@/lib/auth';
 import ProductImage from '@/components/ProductImage';
@@ -9,11 +9,10 @@ import { useToast } from '@/components/Toast';
 
 export const LOW_STOCK = 5;
 
-// แถวสินค้าในแดชบอร์ดผู้ขาย: เห็นสต็อก/ตำแหน่ง (ในร้าน-นอกร้าน) และสลับตำแหน่งได้ในคลิกเดียว
+// แถวสินค้าในแดชบอร์ดผู้ขาย: เห็นราคา/สต็อก แก้ไขและลบได้
 export default function SellerProductRow({ product: p, onChanged }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const inStore = p.inStore !== false;
 
   const run = async (fn, okText) => {
     setBusy(true);
@@ -27,9 +26,6 @@ export default function SellerProductRow({ product: p, onChanged }) {
       setBusy(false);
     }
   };
-
-  const togglePlacement = () =>
-    run(() => API.put(`/products/${p._id}`, { inStore: !inStore }), inStore ? 'ย้ายสินค้าไปขายนอกร้านแล้ว' : 'ย้ายสินค้าเข้าร้านแล้ว');
 
   const remove = () => {
     if (!window.confirm(`ลบสินค้า "${p.name}" ออกจากร้าน?`)) return;
@@ -46,6 +42,7 @@ export default function SellerProductRow({ product: p, onChanged }) {
           <p className={`text-[11px] font-bold ${p.stock < 1 ? 'text-red-500' : p.stock <= LOW_STOCK ? 'text-amber-600' : 'text-slate-500'}`}>
             {p.stock < 1 ? 'สินค้าหมด' : p.stock <= LOW_STOCK ? `เหลือน้อย ${p.stock} ชิ้น` : `สต็อก ${p.stock} ชิ้น`}
           </p>
+          {p.suspended && <p className="text-[10px] font-bold text-red-500">ถูกระงับการขาย</p>}
         </div>
         <div className="flex flex-col gap-1.5">
           <Link href={`/seller/products/${p._id}`} aria-label={`แก้ไข ${p.name}`} className="p-2 bg-slate-100 rounded-full text-slate-700 hover:bg-slate-200">
@@ -55,17 +52,6 @@ export default function SellerProductRow({ product: p, onChanged }) {
             <Trash2 size={15} />
           </button>
         </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 border-t pt-2">
-        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${inStore ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-600'}`}>
-          {inStore ? <Store size={11} /> : <Globe size={11} />}
-          {inStore ? 'อยู่ในร้าน' : 'ขายนอกร้าน'}
-        </span>
-        {p.suspended && <span className="text-[10px] font-bold text-red-500">ถูกระงับการขาย</span>}
-        <button disabled={busy} onClick={togglePlacement} className="text-[11px] font-bold text-cyan-700 hover:underline disabled:opacity-40">
-          {inStore ? 'ย้ายไปนอกร้าน' : 'ย้ายเข้าร้าน'}
-        </button>
       </div>
     </div>
   );

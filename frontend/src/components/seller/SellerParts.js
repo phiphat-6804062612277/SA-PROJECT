@@ -14,8 +14,6 @@ export const ORDER_FILTERS = [
 
 export const PRODUCT_FILTERS = [
   { key: 'all', label: 'ทั้งหมด', test: () => true },
-  { key: 'store', label: 'ในร้าน', test: (p) => p.inStore !== false },
-  { key: 'outside', label: 'นอกร้าน', test: (p) => p.inStore === false },
   { key: 'low', label: 'สต็อกต่ำ', test: (p) => p.stock <= LOW_STOCK },
 ];
 

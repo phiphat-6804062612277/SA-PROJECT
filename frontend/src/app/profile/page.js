@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Phone, MapPin, Edit3, Save, LogOut } from 'lucide-react';
-import API, { errorMessage } from '@/lib/api';
-import { clearSession, updateStoredUser } from '@/lib/auth';
+import API, { errorMessage, signOut } from '@/lib/api';
+import { USER_EVENT, updateStoredUser } from '@/lib/auth';
 import { validatePhone } from '@/lib/phone';
 import { LIMITS } from '@/lib/limits';
 import { useAuth } from '@/lib/useAuth';
@@ -81,7 +81,8 @@ export default function ProfilePage() {
   };
 
   const handleLogout = () => {
-    clearSession();
+    signOut();
+    window.dispatchEvent(new Event(USER_EVENT));
     router.replace('/welcome');
   };
 

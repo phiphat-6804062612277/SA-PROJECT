@@ -142,7 +142,7 @@ async function chatTasks(user) {
       href: '/chat',
       cta: 'เปิดกล่องข้อความ',
       entries: rows.map((c) => {
-        const v = conversationView(c, sideOf(c, user), people, user.id);
+        const v = conversationView(c, sideOf(c, user), people);
         return {
           id: String(c._id),
           text: `${v.counterpart.name}: ${v.lastMessage?.preview || 'ข้อความใหม่'}`,

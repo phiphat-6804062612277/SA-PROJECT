@@ -52,9 +52,6 @@ async function buildDetail(dispute, { includeContact = false } = {}) {
     amount: dispute.amount,
     adminNote: dispute.adminNote || '',
     resolvedAt: dispute.resolvedAt || null,
-    // แชตข้อพิพาทเปิดอยู่จนกว่า Admin จะตัดสิน — ตัดสินแล้วปิดอัตโนมัติ (อ่านอย่างเดียว)
-    chatStatus: dispute.status === 'PENDING' ? 'OPEN' : 'CLOSED',
-    chatClosedAt: dispute.status === 'PENDING' ? null : dispute.resolvedAt || null,
     createdAt: dispute.createdAt,
     buyer: { id: dispute.buyerId, name: buyer?.name || '-', avatarUrl: buyerAvatar, ...contact(buyer) },
     seller: {

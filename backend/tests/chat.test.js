@@ -15,6 +15,7 @@ const Attachment = require('../models/Attachment');
 const Dispute = require('../models/Dispute');
 const Order = require('../models/Order');
 const { runImageCleanup } = require('../jobs/imageCleanup');
+const { runMigrations } = require('../utils/migrations');
 
 let mongod;
 
@@ -73,7 +74,6 @@ async function openDirect(buyer, body) {
 const send = (who, id, body) => api().post(`/api/chat/conversations/${id}/messages`).set(as(who)).send(body);
 const read = (who, id, qs = '') => api().get(`/api/chat/conversations/${id}${qs}`).set(as(who));
 const list = async (who, qs = '') => (await api().get(`/api/chat/conversations${qs}`).set(as(who))).body;
-const setStatus = (who, id, status) => api().put(`/api/chat/conversations/${id}/status`).set(as(who)).send({ status });
 const notes = async (who) => (await api().get('/api/notifications').set(as(who))).body;
 
 test('direct chat: buyer ↔ store, one room per pair, unread counters, polling, read receipts', async () => {
@@ -395,7 +395,7 @@ test('banned user appeal: login gives a limited appeal token that only opens the
   assert.equal(al.conversations.length, 1);
   assert.equal(al.conversations[0].topic, 'APPEAL');
   assert.equal(al.conversations[0].unread, 2);
-  assert.deepEqual(al.counts, { open: 1, appeal: 1, unread: 1 });
+  assert.deepEqual(al.counts, { appeal: 1, unread: 1 }); // ไม่มีสถานะห้องแล้ว: นับเฉพาะห้องที่รอ Admin อ่าน
   assert.equal((await list(a, '?topic=HELP')).conversations.length, 0);
   assert.equal((await notes(a)).items.find((i) => i.key === 'chat_unread').count, 1);
   const av = await read(a, sid);
@@ -415,23 +415,14 @@ test('banned user appeal: login gives a limited appeal token that only opens the
   assert.equal(uv.body.conversation.account.isBanned, true);
   assert.equal(uv.body.conversation.owner, undefined); // ไม่ส่งอีเมลของตัวเองกลับมาเป็น owner (เฉพาะ Admin)
 
-  // Admin ปิดเรื่อง → ห้องเป็นอ่านอย่างเดียว (ผู้ใช้ส่งข้อความ/แนบไฟล์ไม่ได้) จนกว่าจะเปิดใหม่
-  const closedByAdmin = await setStatus(a, sid, 'CLOSED');
-  assert.equal(closedByAdmin.status, 200);
-  assert.deepEqual(closedByAdmin.body.conversation.closedBy, { role: 'admin', mine: true });
-  assert.equal((await list(a, '?status=OPEN')).conversations.length, 0);
-  assert.equal((await setStatus(a, sid, 'nope')).status, 400);
-  const lockedView = await read(appeal, sid);
-  assert.equal(lockedView.body.conversation.status, 'CLOSED');
-  assert.equal(lockedView.body.conversation.canSend, false);
-  assert.equal(lockedView.body.conversation.blockedReason, 'การสนทนานี้ถูกปิดแล้ว');
-  assert.deepEqual(lockedView.body.conversation.closedBy, { role: 'admin', mine: false });
-  assert.equal((await send(appeal, sid, { text: 'ขอบคุณครับ' })).status, 403);
-  assert.equal((await attach(appeal, 'conversation', sid, 'x.png', PNG)).status, 403);
-  // ผู้ใช้ขอเปิดเรื่องอีกครั้งเองได้ (ไม่งั้นผู้ที่ถูกแบนจะอุทธรณ์ต่อไม่ได้) — Admin ปิดซ้ำได้ถ้าไม่รับเรื่อง
-  assert.equal((await setStatus(appeal, sid, 'OPEN')).body.conversation.status, 'OPEN');
+  // ไม่มีระบบปิดแชต: ห้องไม่มีสถานะ OPEN/CLOSED และไม่มี endpoint ปิด/เปิดห้อง — ผู้ที่ถูกแบนส่งข้อความ/แนบไฟล์ต่อได้เสมอ
+  assert.equal(uv.body.conversation.status, undefined);
+  assert.equal(uv.body.conversation.closedBy, undefined);
+  assert.equal(uv.body.conversation.canSend, true);
+  assert.equal((await api().put(`/api/chat/conversations/${sid}/status`).set(as(a)).send({ status: 'CLOSED' })).status, 404);
   assert.equal((await send(appeal, sid, { text: 'ขอบคุณครับ' })).status, 201);
-  assert.equal((await Conversation.findById(sid)).status, 'OPEN');
+  assert.equal((await attach(appeal, 'conversation', sid, 'x.png', PNG)).status, 201);
+  assert.equal((await Conversation.findById(sid).lean()).status, undefined);
 
   // ปลดแบนแล้ว appeal token ใช้ไม่ได้ → ต้องล็อกอินปกติ, ล็อกอินได้แล้ว และยังเห็นห้องซัพพอร์ตเดิม
   await api().put(`/api/admin/users/${buyer.user.id}/unban`).set(as(a));
@@ -532,48 +523,48 @@ test('dispute chat accepts attachments from buyer, seller and admin; files stay 
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal((await attach(buyer, 'dispute', d.id, 'late.png', PNG)).status, 400);
   assert.equal((await api().get(doc.body.url).set(as(buyer))).status, 200);
-  // แชตข้อพิพาทปิดอัตโนมัติเมื่อตัดสิน (chatStatus = CLOSED) และส่งข้อความเพิ่มไม่ได้
+  // ข้อพิพาทที่ตัดสินแล้วเป็นอันจบ ไม่รับข้อความเพิ่ม (กติกาของข้อพิพาท ไม่ใช่สถานะห้องแชต — API ไม่มี chatStatus)
   const after = (await api().get(`/api/disputes/${d.id}`).set(as(buyer))).body;
-  assert.equal(after.chatStatus, 'CLOSED');
-  assert.ok(after.chatClosedAt);
+  assert.equal(after.chatStatus, undefined);
   assert.equal((await api().post(`/api/disputes/${d.id}/messages`).set(as(buyer)).send({ text: 'ยังอยู่ไหม' })).status, 400);
 });
 
-test('close chat: any member can close a trade chat (read-only) and reopen it', async () => {
+test('no close-chat system: rooms have no status, can always send text and files, legacy CLOSED rooms are open again', async () => {
   const seller = await register('seller');
   const buyer = await register('buyer');
-  const stranger = await register('buyer', 'stranger');
+  const a = await admin();
   const id = await openDirect(buyer, { sellerId: seller.user.id });
   assert.equal((await send(buyer, id, { text: 'สวัสดีครับ' })).status, 201);
-  const v0 = await read(seller, id);
-  assert.equal(v0.body.conversation.status, 'OPEN');
-  assert.equal(v0.body.conversation.closedBy, null);
 
-  assert.equal((await setStatus(stranger, id, 'CLOSED')).status, 404); // คนนอกห้องปิดไม่ได้
-  const closed = await setStatus(seller, id, 'CLOSED');
-  assert.equal(closed.status, 200);
-  assert.equal(closed.body.conversation.status, 'CLOSED');
-  assert.deepEqual(closed.body.conversation.closedBy, { role: 'seller', mine: true });
-  assert.equal(closed.body.conversation.canSend, false);
+  // มุมมองของทุกฝ่ายไม่มีสถานะห้อง/ข้อมูลการปิด และส่งได้เสมอ
+  for (const who of [buyer, seller]) {
+    const v = (await read(who, id)).body.conversation;
+    assert.equal(v.canSend, true);
+    for (const k of ['status', 'closedAt', 'closedBy']) assert.ok(!(k in v), `unexpected ${k}`);
+  }
+  assert.ok(!('status' in (await list(buyer)).conversations[0]));
 
-  const bv = await read(buyer, id); // อ่านข้อความเดิมได้
-  assert.equal(bv.body.messages.length, 1);
-  assert.deepEqual(bv.body.conversation.closedBy, { role: 'seller', mine: false });
-  assert.equal(bv.body.conversation.blockedReason, 'การสนทนานี้ถูกปิดแล้ว');
-  assert.equal((await send(buyer, id, { text: 'ยังอยู่ไหมครับ' })).status, 403);
-  assert.equal((await send(seller, id, { text: 'x' })).status, 403);
-  assert.equal((await attach(buyer, 'conversation', id, 'x.png', PNG)).status, 403);
-  assert.equal((await list(buyer)).conversations[0].status, 'CLOSED');
+  // ไม่มีเส้นทางปิด/เปิดห้อง (ทุกบทบาท) และค่า ?status= ไม่มีผลกับรายการห้องของ Admin
+  for (const who of [buyer, seller, a]) {
+    assert.equal((await api().put(`/api/chat/conversations/${id}/status`).set(as(who)).send({ status: 'CLOSED' })).status, 404);
+  }
+  await send(seller, id, { text: 'ยินดีครับ' });
+  const sup = (await api().post('/api/chat/support').set(as(buyer)).send({})).body.id;
+  await send(buyer, sup, { text: 'ขอความช่วยเหลือ' });
+  assert.equal((await list(a, '?status=CLOSED')).conversations.length, 1);
 
-  // ปิดซ้ำไม่ทับข้อมูลคนปิดคนแรก
-  assert.equal((await setStatus(buyer, id, 'CLOSED')).body.conversation.closedBy.role, 'seller');
-  assert.equal((await setStatus(buyer, id, 'nope')).status, 400);
+  // ห้องเก่าที่เคยถูกปิดไว้ในฐานข้อมูล (สถานะ CLOSED ที่ค้างจากระบบเดิม) ต้องส่งข้อความ/แนบไฟล์ได้ตามปกติ
+  await Conversation.collection.updateOne(
+    { _id: new mongoose.Types.ObjectId(id) },
+    { $set: { status: 'CLOSED', closedAt: new Date(), closedBySide: 'peer', closedByRole: 'seller' } }
+  );
+  assert.equal((await send(buyer, id, { text: 'ยังอยู่ไหมครับ' })).status, 201);
+  assert.equal((await attach(buyer, 'conversation', id, 'y.png', PNG)).status, 201);
+  assert.equal((await read(buyer, id)).body.conversation.canSend, true);
 
-  // เปิดใหม่ → ส่งได้อีก
-  const reopened = await setStatus(buyer, id, 'OPEN');
-  assert.equal(reopened.body.conversation.status, 'OPEN');
-  assert.equal(reopened.body.conversation.closedBy, null);
-  assert.equal((await send(buyer, id, { text: 'เปิดใหม่แล้วครับ' })).status, 201);
+  // งานปรับข้อมูลตอนเริ่มระบบล้างสถานะเก่าออก
+  await runMigrations();
+  assert.equal((await Conversation.findById(id).lean()).status, undefined);
 });
 
 test('chat data model: partial unique indexes keep one DIRECT room per pair and one SUPPORT room per user', async () => {

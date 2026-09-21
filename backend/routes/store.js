@@ -69,7 +69,7 @@ router.get('/top', async (req, res) => {
 
   const stores = ranked.filter((r) => byId.has(String(r.sellerId))).slice(0, limit);
   const counts = await Product.aggregate([
-    { $match: { sellerId: { $in: stores.map((r) => r.sellerId) }, inStore: { $ne: false }, ...VISIBLE_PRODUCT } },
+    { $match: { sellerId: { $in: stores.map((r) => r.sellerId) }, ...VISIBLE_PRODUCT } },
     { $group: { _id: '$sellerId', n: { $sum: 1 } } },
   ]);
   const productCount = new Map(counts.map((c) => [String(c._id), c.n]));
@@ -90,7 +90,7 @@ router.get('/top', async (req, res) => {
   );
 });
 
-// หน้าร้าน (สาธารณะ): ข้อมูลร้าน + คะแนน + สินค้าที่วางไว้ "ในร้าน"
+// หน้าร้าน (สาธารณะ): ข้อมูลร้าน + คะแนน + สินค้าทั้งหมดของร้าน
 router.get('/:sellerId', async (req, res) => {
   if (!isValidId(req.params.sellerId)) return res.status(404).json({ message: 'ไม่พบร้านค้า' });
 
@@ -99,7 +99,7 @@ router.get('/:sellerId', async (req, res) => {
     return res.status(404).json({ message: 'ไม่พบร้านค้า หรือร้านค้านี้ถูกระงับ' });
   }
 
-  const products = await Product.find({ sellerId: seller._id, inStore: { $ne: false }, ...VISIBLE_PRODUCT }).sort({
+  const products = await Product.find({ sellerId: seller._id, ...VISIBLE_PRODUCT }).sort({
     createdAt: -1,
   });
   const [rating, sold, soldTotal] = await Promise.all([

@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X, LogIn, UserPlus, LogOut } from 'lucide-react';
-import { clearSession, getStoredUser, hasToken, USER_EVENT } from '@/lib/auth';
+import { getStoredUser, hasToken, USER_EVENT } from '@/lib/auth';
+import { signOut } from '@/lib/api';
 import { extraMenuFor, navFor } from '@/lib/nav';
 import Avatar from '@/components/Avatar';
 import NotificationBadge from '@/components/NotificationBadge';
@@ -53,7 +54,7 @@ export default function MenuDrawer() {
   const extra = extraMenuFor(user);
 
   const logout = () => {
-    clearSession();
+    signOut();
     window.dispatchEvent(new Event(USER_EVENT));
     setOpen(false);
     router.replace('/welcome');
