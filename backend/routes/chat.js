@@ -46,14 +46,13 @@ const respondFail = (res, fail) => res.status(fail.status).json({ message: fail.
 
 // ---------------------------------------------------------------------------
 // รายการห้องสนทนา
-//   ผู้ซื้อ/ผู้ขาย → ห้องของตัวเอง (แชตซื้อขาย + ห้องติดต่อ Admin)   Admin → ห้องซัพพอร์ตทั้งหมด (?status=OPEN|CLOSED &topic=APPEAL|HELP &unread=1)
+//   ผู้ซื้อ/ผู้ขาย → ห้องของตัวเอง (แชตซื้อขาย + ห้องติดต่อ Admin)   Admin → ห้องซัพพอร์ตทั้งหมด (?topic=APPEAL|HELP &unread=1)
 // ---------------------------------------------------------------------------
 router.get('/conversations', async (req, res) => {
   const me = req.user;
   let filter;
   if (me.role === 'admin') {
     filter = { type: 'SUPPORT', messageCount: { $gt: 0 } };
-    if (['OPEN', 'CLOSED'].includes(req.query.status)) filter.status = req.query.status;
     if (['HELP', 'APPEAL'].includes(req.query.topic)) filter.topic = req.query.topic;
     if (req.query.unread === '1') filter.unreadPeer = { $gt: 0 };
   } else {
@@ -64,16 +63,16 @@ router.get('/conversations', async (req, res) => {
 
   const convs = await Conversation.find(filter).sort({ lastMessageAt: -1 }).limit(100);
   const people = await loadPeople(convs.flatMap((c) => [c.ownerId, c.peerId]));
-  const out = { conversations: convs.map((c) => conversationView(c, sideOf(c, me), people, me.id)) };
+  const out = { conversations: convs.map((c) => conversationView(c, sideOf(c, me), people)) };
 
   if (me.role === 'admin') {
     const base = { type: 'SUPPORT', messageCount: { $gt: 0 } };
-    const [open, appeal, unread] = await Promise.all([
-      Conversation.countDocuments({ ...base, status: 'OPEN' }),
-      Conversation.countDocuments({ ...base, status: 'OPEN', topic: 'APPEAL' }),
+    // appeal = คำขออุทธรณ์ที่ผู้ใช้ส่งมาแล้วรอ Admin อ่าน/ตอบ
+    const [appeal, unread] = await Promise.all([
+      Conversation.countDocuments({ ...base, topic: 'APPEAL', unreadPeer: { $gt: 0 } }),
       Conversation.countDocuments({ ...base, unreadPeer: { $gt: 0 } }),
     ]);
-    out.counts = { open, appeal, unread };
+    out.counts = { appeal, unread };
   }
   res.json(out);
 });
@@ -169,7 +168,7 @@ router.post('/support', async (req, res) => {
   try {
     conv = await Conversation.findOneAndUpdate(
       filter,
-      { $setOnInsert: { isSupportChat: true, topic } }, // ห้องเดิมเปลี่ยนเป็น APPEAL/OPEN ตอนผู้ใช้ส่งข้อความจริง (ไม่ใช่แค่เปิดดู)
+      { $setOnInsert: { isSupportChat: true, topic } }, // ห้องเดิมเปลี่ยนเป็น APPEAL ตอนผู้ใช้ส่งข้อความจริง (ไม่ใช่แค่เปิดดู)
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
   } catch (err) {
@@ -216,7 +215,7 @@ router.get('/conversations/:id', async (req, res) => {
 
   const people = await loadPeople([conv.ownerId, conv.peerId, ...rows.map((m) => m.senderId)]);
   res.json({
-    conversation: conversationView(conv, side, people, req.user.id),
+    conversation: conversationView(conv, side, people),
     messages: rows.map((m) => messageView(m, conv, side, people)),
     hasMore,
   });
@@ -283,31 +282,6 @@ router.post('/conversations/:id/messages', async (req, res) => {
   );
 
   res.status(201).json({ message: messageView(message, conv, side, people) });
-});
-
-// ---------------------------------------------------------------------------
-// ปิด/เปิดห้องสนทนา: { status: 'CLOSED' | 'OPEN' } — สมาชิกในห้องทำได้ทุกคน (ผู้ซื้อ/ผู้ขาย/Admin ในห้องซัพพอร์ต)
-//   CLOSED = อ่านได้อย่างเดียว (ส่งข้อความ/ไฟล์ไม่ได้) จนกว่าจะเปิดใหม่ · ปิดซ้ำจะไม่ทับข้อมูลว่าใครปิดคนแรก
-//   แชตข้อพิพาทไม่ผ่านเส้นทางนี้ — ปิดอัตโนมัติเมื่อ Admin ตัดสิน
-// ---------------------------------------------------------------------------
-router.put('/conversations/:id/status', async (req, res) => {
-  const status = String(req.body?.status || '');
-  if (!['OPEN', 'CLOSED'].includes(status)) return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
-  const got = await getConversation(req.user, req.params.id);
-  if (got.fail) return respondFail(res, got.fail);
-  const { conv, side } = got;
-
-  if (status === 'CLOSED') {
-    await Conversation.updateOne(
-      { _id: conv._id, status: { $ne: 'CLOSED' } },
-      { $set: { status: 'CLOSED', closedAt: new Date(), closedById: req.user.id, closedBySide: side, closedByRole: normalizeRole(req.user.role) } }
-    );
-  } else {
-    await Conversation.updateOne({ _id: conv._id }, { $set: { status: 'OPEN', closedAt: null, closedById: null, closedBySide: null, closedByRole: null } });
-  }
-  const updated = await Conversation.findById(conv._id);
-  const people = await loadPeople([updated.ownerId, updated.peerId]);
-  res.json({ conversation: conversationView(updated, side, people, req.user.id) });
 });
 
 // ---------------------------------------------------------------------------

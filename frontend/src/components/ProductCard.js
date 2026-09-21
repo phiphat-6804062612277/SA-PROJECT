@@ -7,7 +7,7 @@ import ProductImage from '@/components/ProductImage';
 //   รูปเต็มขอบการ์ด + ป้ายคะแนนบนรูป + ราคาเด่นสีธีม + แถวร้านค้า/ยอดขายด้านล่าง
 export default function ProductCard({ product: p, showStore = true }) {
   const soldOut = p.stock < 1;
-  const storeName = p.seller ? (p.inStore !== false ? p.seller.storeName || p.seller.name : p.seller.name) : '';
+  const storeName = p.seller ? p.seller.storeName || p.seller.name : '';
   const hasRating = p.rating?.count > 0;
 
   return (

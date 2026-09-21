@@ -18,6 +18,8 @@ const POLL_MS = 45_000;
 const TASK_ACTION_RE = /^\/(orders|disputes|admin)(\/|$)/;
 
 // ดึง /api/notifications ตอนเปิดหน้า, ทุกครั้งที่เปลี่ยนหน้า, ทุก 45 วินาที และเมื่อกลับมาที่แท็บนี้
+// (คำขอนี้ผ่าน middleware ตรวจเซสชันด้วย จึงเป็นตัวเช็ก "Single Active Session" ทุกครั้งที่เปลี่ยนหน้า —
+//  ถ้าบัญชีนี้ไปล็อกอินที่เครื่องอื่น api.js จะออกจากระบบเครื่องนี้ให้ทันทีที่ได้ 401 SESSION_REPLACED)
 export default function NotificationProvider({ children }) {
   const pathname = usePathname();
   const [state, setState] = useState(EMPTY);

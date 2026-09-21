@@ -16,8 +16,11 @@ const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const signToken = (user) =>
-  jwt.sign({ id: user._id, email: user.email, role: normalizeRole(user.role) }, JWT_SECRET, {
+// sid = รหัสเซสชันล่าสุดของบัญชี (User.sessionId) — Single Active Session: ล็อกอินใหม่ทุกครั้งสุ่ม sid ใหม่ ทำให้โทเคนของเครื่องเดิมใช้ไม่ได้ทันที
+const newSessionId = () => crypto.randomBytes(16).toString('hex');
+
+const signToken = (user, sid) =>
+  jwt.sign({ id: user._id, email: user.email, role: normalizeRole(user.role), sid }, JWT_SECRET, {
     expiresIn: '7d',
   });
 
@@ -67,9 +70,11 @@ router.post('/register', async (req, res) => {
   }
 
   const hashed = await bcrypt.hash(password, 10);
+  const sid = newSessionId();
   let user;
   try {
     user = await User.create({
+      sessionId: sid,
       name: username,
       email: normalizedEmail,
       password: hashed,
@@ -85,7 +90,7 @@ router.post('/register', async (req, res) => {
   if (userRole !== 'admin') await Wallet.create({ userId: user._id, balance: 0 }); // Admin ไม่มี Wallet
 
   // ล็อกอินให้ทันทีหลังสมัคร
-  res.status(201).json({ message: 'สมัครสมาชิกสำเร็จ', token: signToken(user), user: serializeUser(user) });
+  res.status(201).json({ message: 'สมัครสมาชิกสำเร็จ', token: signToken(user, sid), user: serializeUser(user) });
 });
 
 // 2. เข้าสู่ระบบ
@@ -94,9 +99,20 @@ router.post('/login', async (req, res) => {
   const user = await User.findOne({ email: String(email || '').trim().toLowerCase() });
   const ok = user && (await bcrypt.compare(String(password || ''), user.password));
   if (!ok) return res.status(400).json({ message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
-  if (user.isBanned) return res.status(403).json(bannedResponse(user));
+  if (user.isBanned) return res.status(403).json(bannedResponse(user)); // บัญชีที่ถูกแบนไม่ได้เซสชัน จึงไม่ไปแทนที่เซสชันเดิมของใคร
 
-  res.json({ token: signToken(user), user: serializeUser(user) });
+  // Single Active Session: บันทึกเซสชันใหม่ทับของเดิม → เครื่อง/เบราว์เซอร์ที่ล็อกอินไว้ก่อนหน้าจะถูกเด้งออกในคำขอถัดไป (401 SESSION_REPLACED)
+  const sid = newSessionId();
+  await User.updateOne({ _id: user._id }, { $set: { sessionId: sid } });
+  res.json({ token: signToken(user, sid), user: serializeUser(user) });
+});
+
+// 2.1 ออกจากระบบ: ล้างเซสชันในฐานข้อมูล → โทเคนที่ถืออยู่ใช้ไม่ได้อีก (ต่อให้ถูกคัดลอกไปไว้ที่อื่น)
+// ล้างเฉพาะเมื่อ sessionId ยังเป็นของโทเคนนี้ — ถ้าระหว่างนั้นมีเครื่องอื่นล็อกอินแทนที่แล้ว จะไม่ไปล้างเซสชันใหม่ของเขา
+// (allowBanned: ผู้ที่ถูกแบนก็ออกจากระบบได้ / appeal token ไม่มีเซสชันจึงไม่ทำอะไร)
+router.post('/logout', auth.allowBanned, async (req, res) => {
+  if (req.user.sid) await User.updateOne({ _id: req.user.id, sessionId: req.user.sid }, { $set: { sessionId: '' } });
+  res.json({ message: 'ออกจากระบบเรียบร้อยแล้ว' });
 });
 
 // 3. ดึงข้อมูลโปรไฟล์ตัวเอง
@@ -231,7 +247,8 @@ router.post('/reset-password', async (req, res) => {
   const user = await User.findOne({ email: payload.email });
   if (!user) return res.status(400).json({ message: 'ไม่พบบัญชีผู้ใช้' });
 
-  await User.updateOne({ _id: user._id }, { password: await bcrypt.hash(password, 10) });
+  // เปลี่ยนรหัสผ่าน = ทุกเซสชันเดิมเป็นโมฆะ (sessionId ว่าง → ต้องล็อกอินใหม่ด้วยรหัสผ่านใหม่)
+  await User.updateOne({ _id: user._id }, { password: await bcrypt.hash(password, 10), sessionId: '' });
   await PasswordReset.deleteOne({ _id: doc._id }); // ใช้ได้ครั้งเดียว
 
   res.json({ message: 'ตั้งรหัสผ่านใหม่เรียบร้อย กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่' });

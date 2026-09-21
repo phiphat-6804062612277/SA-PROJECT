@@ -12,11 +12,13 @@ if (!isProd && !process.env.JWT_SECRET) {
 const app = require('./app');
 const { startAutoRelease } = require('./jobs/autoRelease');
 const { startImageCleanup } = require('./jobs/imageCleanup');
+const { runMigrations } = require('./utils/migrations');
 
 mongoose
   .connect(MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log('✅ Connected to MongoDB');
+    await runMigrations();
     app.listen(PORT, () => console.log(`🚀 Solify API running on port ${PORT}`));
     startAutoRelease();
     startImageCleanup();

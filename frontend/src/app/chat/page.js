@@ -16,9 +16,7 @@ const ROLE_LABEL = { buyer: 'ผู้ซื้อ', seller: 'ผู้ขาย
 const ADMIN_FILTERS = [
   { key: 'all', label: 'ทั้งหมด', query: '' },
   { key: 'unread', label: 'ยังไม่อ่าน', query: '?unread=1', count: 'unread' },
-  { key: 'appeal', label: 'ยื่นอุทธรณ์', query: '?topic=APPEAL&status=OPEN', count: 'appeal' },
-  { key: 'open', label: 'เปิดอยู่', query: '?status=OPEN', count: 'open' },
-  { key: 'closed', label: 'ปิดแล้ว', query: '?status=CLOSED' },
+  { key: 'appeal', label: 'ยื่นอุทธรณ์', query: '?topic=APPEAL', count: 'appeal' },
 ];
 
 const Pill = ({ cls, children }) => <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap ${cls}`}>{children}</span>;
@@ -42,7 +40,6 @@ function Row({ c }) {
             {p.role && p.role !== 'admin' && <Pill cls="bg-slate-100 text-slate-600">{ROLE_LABEL[p.role] || p.role}</Pill>}
             {support && c.side !== 'admin' && <Pill cls="bg-violet-100 text-violet-700">ติดต่อ Admin</Pill>}
             {c.topic === 'APPEAL' && <Pill cls="bg-red-100 text-red-600">ยื่นอุทธรณ์</Pill>}
-            {c.status === 'CLOSED' && <Pill cls="bg-slate-200 text-slate-600">ปิดแล้ว</Pill>}
           </div>
           <p className={`text-xs truncate ${c.unread ? 'text-slate-800 font-semibold' : 'text-slate-500'}`}>
             {c.lastMessage ? `${c.lastMessage.fromMe ? 'คุณ: ' : ''}${c.lastMessage.preview}` : 'ยังไม่มีข้อความ'}

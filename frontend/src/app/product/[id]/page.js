@@ -90,10 +90,6 @@ export default function ProductDetailPage() {
   };
 
   const storeName = product.seller?.storeName || product.seller?.name;
-  // สินค้า "นอกร้าน" ขายในตลาดรวมเท่านั้น จึงไม่มีลิงก์เข้าหน้าร้าน
-  const inStore = product.inStore !== false;
-  const Wrapper = inStore ? Link : 'div';
-  const wrapperProps = inStore ? { href: `/store/${product.sellerId}` } : {};
 
   return (
     <div className="bg-white min-h-screen pb-32">
@@ -116,18 +112,16 @@ export default function ProductDetailPage() {
         </div>
 
         {product.seller && (
-          <Wrapper {...wrapperProps} className="flex items-center gap-3 bg-slate-50 hover:bg-cyan-50 rounded-2xl p-3 transition">
+          <Link href={`/store/${product.sellerId}`} className="flex items-center gap-3 bg-slate-50 hover:bg-cyan-50 rounded-2xl p-3 transition">
             <Avatar src={product.seller.logoUrl} name={storeName} size={44} />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-slate-800 truncate">{product.inStore !== false ? `ร้าน ${storeName}` : `ผู้ขาย ${product.seller.name}`}</p>
+              <p className="text-xs font-bold text-slate-800 truncate">ร้าน {storeName}</p>
               <RatingSummary rating={product.sellerRating} emptyText="ร้านใหม่ ยังไม่มีรีวิว" />
             </div>
-            {inStore && (
-              <span className="flex items-center text-xs font-bold text-cyan-700 shrink-0">
-                เข้าชมร้าน <ChevronRight size={14} />
-              </span>
-            )}
-          </Wrapper>
+            <span className="flex items-center text-xs font-bold text-cyan-700 shrink-0">
+              เข้าชมร้าน <ChevronRight size={14} />
+            </span>
+          </Link>
         )}
 
         {product.seller && canBuy && (

@@ -53,9 +53,16 @@ async function main() {
     { name: 'แผงโซลาร์เซลล์ Mono 550W', price: 4990, stock: 40, description: 'แผงโซลาร์เซลล์ชนิด Monocrystalline ประสิทธิภาพสูง 550 วัตต์ รับประกัน 12 ปี' },
     { name: 'อินเวอร์เตอร์ Hybrid 5kW', price: 38900, stock: 12, description: 'Hybrid Inverter 5kW รองรับแบตเตอรี่ลิเธียม พร้อมระบบมอนิเตอร์ผ่านแอป' },
     { name: 'แบตเตอรี่ลิเธียม LiFePO4 5.12kWh', price: 45900, stock: 8, description: 'แบตเตอรี่เก็บพลังงาน LiFePO4 อายุการใช้งานมากกว่า 6,000 รอบ' },
-    { name: 'สายไฟโซลาร์ PV1-F 4 ตร.มม. (ขายนอกร้าน)', price: 35, stock: 500, inStore: false, description: 'สายไฟ DC สำหรับงานโซลาร์เซลล์ ราคาต่อเมตร (ตัวอย่างสินค้าที่ขายในตลาดรวมเท่านั้น ไม่แสดงในหน้าร้าน)' },
+    { name: 'สายไฟโซลาร์ PV1-F 4 ตร.มม.', price: 35, stock: 500, description: 'สายไฟ DC สำหรับงานโซลาร์เซลล์ ราคาต่อเมตร' },
     { name: 'ชุดโซล่าเซลล์ 15kW ครบชุดพร้อมติดตั้ง', price: 399000, stock: 3, description: 'ชุดระบบผลิตไฟฟ้าโซลาร์เซลล์ 15kW สำหรับบ้านและธุรกิจขนาดเล็ก ครบทั้งแผง อินเวอร์เตอร์ และอุปกรณ์ยึดจับ' },
   ];
+  // สินค้าตัวอย่างเดิมชื่อ "(ขายนอกร้าน)" — ระบบถอดการขายนอกร้านออกแล้ว: เปลี่ยนชื่อสินค้าเดิม ไม่สร้างซ้ำ
+  if (!(await Product.exists({ sellerId: seller._id, name: 'สายไฟโซลาร์ PV1-F 4 ตร.มม.' }))) {
+    await Product.updateOne(
+      { sellerId: seller._id, name: 'สายไฟโซลาร์ PV1-F 4 ตร.มม. (ขายนอกร้าน)' },
+      { $set: { name: 'สายไฟโซลาร์ PV1-F 4 ตร.มม.', description: 'สายไฟ DC สำหรับงานโซลาร์เซลล์ ราคาต่อเมตร' } }
+    );
+  }
   for (const s of samples) {
     await Product.updateOne({ sellerId: seller._id, name: s.name }, { $setOnInsert: { ...s, sellerId: seller._id } }, { upsert: true });
   }

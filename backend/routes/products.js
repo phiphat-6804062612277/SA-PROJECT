@@ -11,8 +11,6 @@ const SELLER_FIELDS = 'name storeName storeLogoUrl';
 
 const router = express.Router();
 
-const toBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
-
 // อ่านและตรวจค่าจาก body ของฟอร์มสินค้า — คืน { error } หรือ { data }
 function parseProductBody(body = {}, { partial = false } = {}) {
   const data = {};
@@ -49,7 +47,6 @@ function parseProductBody(body = {}, { partial = false } = {}) {
     data.description = description;
   }
   if (body.imageUrl !== undefined) data.imageUrl = String(body.imageUrl).trim().slice(0, 1000);
-  if (body.inStore !== undefined) data.inStore = toBool(body.inStore);
   return { data };
 }
 
@@ -138,6 +135,7 @@ router.post('/', auth, requireRole('seller'), async (req, res) => {
   const me = await User.findById(req.user.id).select('storeBanned');
   if (me?.storeBanned) return res.status(403).json({ message: 'ร้านค้าของคุณถูกระงับ ไม่สามารถลงขายสินค้าได้' });
 
+  // ผูกสินค้ากับร้านของผู้ขายที่ล็อกอินอยู่เสมอ (sellerId มาจาก token เท่านั้น — body ส่ง sellerId/storeId มาก็ไม่มีผล)
   const product = await Product.create({ ...data, sellerId: req.user.id });
   res.status(201).json({ message: 'ลงขายสินค้าสำเร็จ', product });
 });

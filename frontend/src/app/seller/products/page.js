@@ -11,7 +11,7 @@ import Notice from '@/components/Notice';
 import SellerProductRow from '@/components/seller/SellerProductRow';
 import { Chip, PRODUCT_FILTERS, countBy } from '@/components/seller/SellerParts';
 
-// จัดการสินค้าของร้าน (เมนู "สินค้า"): ค้นหา / กรอง / สลับในร้าน-นอกร้าน / แก้ไข / ลบ / ลงขายสินค้าใหม่  (?filter=low = สต็อกต่ำ)
+// จัดการสินค้าของร้าน (เมนู "สินค้า"): ค้นหา / กรอง / แก้ไข / ลบ / ลงขายสินค้าใหม่  (?filter=low = สต็อกต่ำ)
 function SellerProducts() {
   const { user } = useAuth({ roles: ['seller'] });
   const params = useSearchParams();
